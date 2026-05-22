@@ -1,0 +1,19 @@
+{
+  "name": "vtricks-lms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vtricks LMS Admin Portal — Full Stack Monorepo",
+  "scripts": {
+    "dev": "concurrently --names \"SERVER,CLIENT\" --prefix-colors \"cyan,magenta\" \"pnpm --filter lms-server dev\" \"pnpm --filter lms-client dev\"",
+    "dev:server": "pnpm --filter lms-server dev",
+    "dev:client": "pnpm --filter lms-client dev",
+    "build": "pnpm --filter lms-client build",
+    "db:migrate": "pnpm --filter lms-server db:migrate",
+    "db:seed": "pnpm --filter lms-server db:seed",
+    "db:studio": "pnpm --filter lms-server db:studio",
+    "install:all": "pnpm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

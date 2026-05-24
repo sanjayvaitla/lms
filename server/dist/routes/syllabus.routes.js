@@ -39,29 +39,35 @@ const ctrl = __importStar(require("../controllers/syllabus.controller"));
 const router = (0, express_1.Router)({ mergeParams: true });
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const multer = require('multer');
-// Store in memory (buffer) -- no disk writes
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB max
+    limits: { fileSize: 20 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
         const allowed = [
             'application/pdf',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'application/vnd.ms-excel',
+            'text/csv',
+            'application/csv',
+            'application/octet-stream',
         ];
         const nameOk = file.originalname.endsWith('.pdf') ||
             file.originalname.endsWith('.xlsx') ||
-            file.originalname.endsWith('.xls');
+            file.originalname.endsWith('.xls') ||
+            file.originalname.endsWith('.csv');
         if (allowed.includes(file.mimetype) || nameOk) {
             cb(null, true);
         }
         else {
-            cb(new Error('Only PDF and Excel files are allowed'));
+            cb(new Error('Only PDF, Excel, and CSV files are allowed'));
         }
     },
 });
 router.use(auth_middleware_1.authenticate);
+// Course syllabus routes (mounted at /courses/:courseId/syllabus)
+router.get('/', ctrl.listSyllabi);
+router.get('/active', ctrl.getSyllabus);
 router.post('/', upload.single('syllabus'), ctrl.uploadSyllabus);
-router.get('/', ctrl.getSyllabus);
+router.delete('/:syllabusId', (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN', 'TRAINER'), ctrl.deleteSyllabus);
 exports.default = router;
 //# sourceMappingURL=syllabus.routes.js.map

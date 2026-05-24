@@ -10,12 +10,9 @@ exports.createAssignment = createAssignment;
 exports.updateAssignment = updateAssignment;
 exports.deleteAssignment = deleteAssignment;
 exports.gradeSubmission = gradeSubmission;
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
 const db_1 = __importDefault(require("../lib/db"));
 const error_middleware_1 = require("../middleware/error.middleware");
-const uploads_1 = require("../lib/uploads");
-(0, uploads_1.ensureUploadDirs)();
+const storage_1 = require("../lib/storage");
 async function getAssignmentDashboard() {
     const [total, published, submissions, pending] = await Promise.all([
         db_1.default.query(`SELECT COUNT(*)::int AS cnt FROM assignments`),
@@ -85,16 +82,14 @@ async function createAssignment(input, createdBy, file) {
     const course = await db_1.default.query('SELECT id FROM courses WHERE id = $1', [input.courseId]);
     if (!course.rowCount)
         throw new error_middleware_1.AppError('Course not found', 404, 'NOT_FOUND');
-    const fname = (0, uploads_1.safeFilename)(file.originalname);
-    const diskPath = path_1.default.join(uploads_1.ASSIGNMENTS_DIR, fname);
-    fs_1.default.writeFileSync(diskPath, file.buffer);
+    const stored = await storage_1.storageAdapter.upload({ buffer: file.buffer, originalname: file.originalname, mimetype: 'application/pdf' }, 'assignments');
     const assignmentId = await db_1.default.transaction(async (tx) => {
         const { rows } = await db_1.default.query(`INSERT INTO assignments
          (course_id, module_id, title, description, pdf_filename, pdf_path, pdf_size_bytes, due_date, max_score, status, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`, [
             input.courseId, input.moduleId ?? null, input.title, input.description ?? null,
-            file.originalname, (0, uploads_1.relativeUploadPath)('assignments', fname), file.size,
+            file.originalname, stored.key, file.size,
             input.dueDate ?? null, input.maxScore, input.status, createdBy,
         ], tx);
         const id = rows[0].id;
@@ -153,9 +148,8 @@ async function deleteAssignment(id) {
         throw new error_middleware_1.AppError('Assignment not found', 404, 'NOT_FOUND');
     await db_1.default.query('DELETE FROM assignments WHERE id = $1', [id]);
     const fp = rows[0].pdf_path;
-    const full = path_1.default.join(__dirname, '../../uploads', fp);
-    if (fs_1.default.existsSync(full))
-        fs_1.default.unlinkSync(full);
+    if (fp)
+        await storage_1.storageAdapter.delete(fp);
 }
 async function gradeSubmission(submissionId, score, feedback) {
     const { rows } = await db_1.default.query(`UPDATE assignment_submissions SET score = $2, feedback = $3, status = 'GRADED'

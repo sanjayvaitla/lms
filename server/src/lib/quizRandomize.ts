@@ -8,9 +8,10 @@ export function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export function pickRandomIds(pool: string[], count: number): string[] {
-  if (count >= pool.length) return shuffle(pool);
-  return shuffle(pool).slice(0, count);
+export function pickRandomIds(pool: string[], count: number, randomize: boolean = true): string[] {
+  const arr = randomize ? shuffle(pool) : [...pool];
+  if (count >= arr.length) return arr;
+  return arr.slice(0, count);
 }
 
 export function shuffleMcqOptions(options: string[]): { shuffled: string[]; correctIndex: number; correctLabel: string } {

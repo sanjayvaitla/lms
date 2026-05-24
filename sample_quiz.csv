@@ -1,0 +1,16 @@
+question,optionA,optionB,optionC,optionD,correct_answer,points
+What does SQL stand for?,Structured Query Language,Simple Query Language,Sequential Query Language,Standard Query Language,Structured Query Language,1
+Which SQL command retrieves data from a table?,INSERT,UPDATE,SELECT,DELETE,SELECT,1
+Which clause filters rows in a SQL query?,ORDER BY,GROUP BY,WHERE,HAVING,WHERE,1
+What does the JOIN keyword do in SQL?,Combines rows from two or more tables,Deletes duplicate rows,Sorts query results,Filters null values,Combines rows from two or more tables,2
+Which function returns the total sum of a column?,COUNT(),SUM(),AVG(),MAX(),SUM(),1
+What does a PRIMARY KEY constraint do?,Allows duplicate values,Uniquely identifies each row,Links two tables together,Sorts the table automatically,Uniquely identifies each row,2
+Which keyword removes duplicate rows from results?,DISTINCT,UNIQUE,FILTER,CLEAN,DISTINCT,1
+What does NULL represent in SQL?,Zero,An empty string,An unknown or missing value,False,An unknown or missing value,1
+Which command adds a new row to a table?,UPDATE,INSERT INTO,ALTER TABLE,CREATE,INSERT INTO,1
+Which clause sorts query results?,SORT BY,ORDER BY,GROUP BY,FILTER BY,ORDER BY,1
+What does GROUP BY do?,Filters rows,Joins tables,Groups rows sharing the same values,Removes duplicates,Groups rows sharing the same values,2
+Which function counts the number of rows?,SUM(),COUNT(),TOTAL(),AVG(),COUNT(),1
+What is a FOREIGN KEY?,A key used to encrypt data,A key that links two tables,A primary identifier,A unique constraint,A key that links two tables,2
+Which command modifies existing data?,INSERT,SELECT,UPDATE,CREATE,UPDATE,1
+Which aggregate function returns the highest value?,SUM(),COUNT(),MIN(),MAX(),MAX(),1

@@ -34,7 +34,11 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.uploadSyllabus = uploadSyllabus;
+exports.listSyllabi = listSyllabi;
 exports.getSyllabus = getSyllabus;
+exports.deleteSyllabus = deleteSyllabus;
+exports.assignSyllabusToBatch = assignSyllabusToBatch;
+exports.getBatchSyllabus = getBatchSyllabus;
 const syllabusService = __importStar(require("../services/syllabus.service"));
 const error_middleware_1 = require("../middleware/error.middleware");
 async function uploadSyllabus(req, res) {
@@ -44,15 +48,36 @@ async function uploadSyllabus(req, res) {
     const file = req.file;
     if (!file)
         throw new error_middleware_1.AppError('No file uploaded', 400, 'NO_FILE');
-    const result = await syllabusService.uploadSyllabus(String(req.params.courseId), req.user.userId, file);
+    const label = req.body.label ?? null;
+    const result = await syllabusService.uploadSyllabus(String(req.params.courseId), req.user.userId, file, label ?? undefined);
     res.status(201).json({ success: true, data: result });
 }
+async function listSyllabi(req, res) {
+    const syllabi = await syllabusService.listSyllabi(String(req.params.courseId));
+    res.json({ success: true, data: syllabi });
+}
 async function getSyllabus(req, res) {
-    const syllabus = await syllabusService.getSyllabus(String(req.params.courseId));
+    const syllabusId = req.query.syllabusId ? String(req.query.syllabusId) : undefined;
+    const syllabus = await syllabusService.getSyllabus(String(req.params.courseId), syllabusId);
     if (!syllabus) {
         res.json({ success: true, data: null });
         return;
     }
     res.json({ success: true, data: syllabus });
+}
+async function deleteSyllabus(req, res) {
+    await syllabusService.deleteSyllabus(String(req.params.courseId), String(req.params.syllabusId));
+    res.json({ success: true, message: 'Syllabus deleted' });
+}
+async function assignSyllabusToBatch(req, res) {
+    const { syllabusId } = req.body;
+    if (!syllabusId)
+        throw new error_middleware_1.AppError('syllabusId is required', 400, 'VALIDATION_ERROR');
+    await syllabusService.assignSyllabusToBatch(String(req.params.batchId), syllabusId);
+    res.json({ success: true, message: 'Syllabus assigned to batch' });
+}
+async function getBatchSyllabus(req, res) {
+    const syllabus = await syllabusService.getBatchSyllabus(String(req.params.batchId));
+    res.json({ success: true, data: syllabus ?? null });
 }
 //# sourceMappingURL=syllabus.controller.js.map

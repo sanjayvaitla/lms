@@ -32,19 +32,19 @@ export declare const updateTrainerSchema: z.ZodObject<{
     linkedin: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     phone: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    name?: string | undefined;
-    email?: string | undefined;
     bio?: string | undefined;
     skills?: string | undefined;
     linkedin?: string | undefined;
     phone?: string | undefined;
+    name?: string | undefined;
+    email?: string | undefined;
 }, {
-    name?: string | undefined;
-    email?: string | undefined;
     bio?: string | undefined;
     skills?: string | undefined;
     linkedin?: string | undefined;
     phone?: string | undefined;
+    name?: string | undefined;
+    email?: string | undefined;
 }>;
 export type CreateTrainerInput = z.infer<typeof createTrainerSchema>;
 export type UpdateTrainerInput = z.infer<typeof updateTrainerSchema>;

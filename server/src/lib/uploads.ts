@@ -1,9 +1,15 @@
+/**
+ * uploads.ts — legacy helper shim
+ * New upload code should use storageAdapter from ./storage.
+ * This file ensures the local uploads directory structure exists
+ * when S3 is not configured.
+ */
 import path from 'path';
 import fs from 'fs';
 
-export const UPLOADS_ROOT = path.join(__dirname, '../../uploads');
+export const UPLOADS_ROOT    = path.join(__dirname, '../../uploads');
 export const ASSIGNMENTS_DIR = path.join(UPLOADS_ROOT, 'assignments');
-export const DATASETS_DIR = path.join(UPLOADS_ROOT, 'datasets');
+export const DATASETS_DIR    = path.join(UPLOADS_ROOT, 'datasets');
 
 export function ensureUploadDirs(): void {
   for (const dir of [UPLOADS_ROOT, ASSIGNMENTS_DIR, DATASETS_DIR]) {

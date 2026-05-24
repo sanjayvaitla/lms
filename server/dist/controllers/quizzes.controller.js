@@ -49,6 +49,7 @@ exports.previewRandom = previewRandom;
 exports.startAttempt = startAttempt;
 exports.submitAttempt = submitAttempt;
 exports.listAttempts = listAttempts;
+exports.importCsv = importCsv;
 const svc = __importStar(require("../services/quizzes.service"));
 const quiz_validator_1 = require("../validators/quiz.validator");
 const error_middleware_1 = require("../middleware/error.middleware");
@@ -136,5 +137,25 @@ async function submitAttempt(req, res) {
 }
 async function listAttempts(req, res) {
     res.json({ success: true, data: await svc.listAttempts(req.query.quizId) });
+}
+async function importCsv(req, res) {
+    if (!req.file)
+        throw new error_middleware_1.AppError('CSV file required', 400, 'FILE_REQUIRED');
+    const { courseId, moduleId, title, questionsPerAttempt, timeLimitMinutes, passingScore, maxAttempts, status } = req.body;
+    if (!courseId)
+        throw new error_middleware_1.AppError('courseId is required', 400, 'VALIDATION_ERROR');
+    if (!moduleId)
+        throw new error_middleware_1.AppError('moduleId is required', 400, 'VALIDATION_ERROR');
+    if (!title)
+        throw new error_middleware_1.AppError('Quiz title is required', 400, 'VALIDATION_ERROR');
+    const data = await svc.importQuizFromCsv(courseId, moduleId, req.user.userId, req.file, {
+        title,
+        questionsPerAttempt: parseInt(questionsPerAttempt ?? '10', 10),
+        timeLimitMinutes: timeLimitMinutes ? parseInt(timeLimitMinutes, 10) : null,
+        passingScore: parseInt(passingScore ?? '60', 10),
+        maxAttempts: parseInt(maxAttempts ?? '1', 10),
+        status: status ?? 'DRAFT',
+    });
+    res.status(201).json({ success: true, data });
 }
 //# sourceMappingURL=quizzes.controller.js.map

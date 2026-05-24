@@ -2,8 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { TokenPayload } from '../lib/jwt';
 declare global {
     namespace Express {
-        interface Request {
-            user?: TokenPayload;
+        interface User extends TokenPayload {
         }
     }
 }

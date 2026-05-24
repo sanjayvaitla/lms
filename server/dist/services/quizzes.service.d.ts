@@ -28,36 +28,71 @@ export declare function createQuiz(input: CreateQuizInput, createdBy: string): P
 export declare function updateQuiz(id: string, input: Partial<CreateQuizInput>): Promise<any>;
 export declare function deleteQuiz(id: string): Promise<void>;
 export declare function startAttempt(quizId: string, studentId: string): Promise<{
-    attempt: any;
+    attemptId: string;
+    attemptNumber: number;
+    timeLimitMinutes: number | null;
+    passingScore: number;
     questions: {
         id: string;
         questionText: string;
         questionType: string;
-        options: string[];
         points: number;
+        difficulty: string;
+        options: string[] | {
+            shuffled: string[];
+            correctIndex: number;
+            correctLabel: string;
+        } | null;
     }[];
-    timeLimitMinutes: unknown;
 }>;
 export declare function submitAttempt(attemptId: string, answers: {
     questionId: string;
     selectedAnswer: string;
 }[]): Promise<{
+    attemptId: string;
     score: number;
+    passed: boolean;
     earnedPoints: number;
     totalPoints: number;
-    passed: boolean;
 }>;
 export declare function listAttempts(quizId?: string): Promise<any[]>;
 export declare function previewRandomDraw(quizId: string): Promise<{
+    quizTitle: string;
+    description: string | null;
     poolSize: number;
     questionsPerAttempt: number;
+    passingScore: number;
+    timeLimitMinutes: number | null;
     draws: {
         studentLabel: string;
-        questionIds: string[];
         questions: {
             id: string;
             text: string;
+            type: string;
+            options: string[] | null;
+            correctAnswer: string;
+            explanation: string | null;
+            points: number;
+            difficulty: string;
         }[];
     }[];
+}>;
+export interface CsvImportSettings {
+    title: string;
+    questionsPerAttempt: number;
+    timeLimitMinutes: number | null;
+    passingScore: number;
+    maxAttempts: number;
+    status: string;
+}
+export declare function importQuizFromCsv(courseId: string, moduleId: string, createdBy: string, file: {
+    buffer: Buffer;
+    originalname: string;
+    mimetype: string;
+}): Promise<{
+    quizId: string;
+    title: any;
+    questionsImported: number;
+    moduleTitle: any;
 }>;
 //# sourceMappingURL=quizzes.service.d.ts.map

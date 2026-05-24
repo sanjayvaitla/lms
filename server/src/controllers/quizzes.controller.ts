@@ -99,3 +99,28 @@ export async function submitAttempt(req: Request, res: Response) {
 export async function listAttempts(req: Request, res: Response) {
   res.json({ success: true, data: await svc.listAttempts(req.query.quizId as string | undefined) });
 }
+
+export async function importCsv(req: Request, res: Response) {
+  if (!req.file) throw new AppError('CSV file required', 400, 'FILE_REQUIRED');
+  const { courseId, moduleId, title, questionsPerAttempt, timeLimitMinutes,
+          passingScore, maxAttempts, status } = req.body;
+  if (!courseId)  throw new AppError('courseId is required', 400, 'VALIDATION_ERROR');
+  if (!moduleId)  throw new AppError('moduleId is required', 400, 'VALIDATION_ERROR');
+  if (!title)     throw new AppError('Quiz title is required', 400, 'VALIDATION_ERROR');
+
+  const data = await svc.importQuizFromCsv(
+    courseId,
+    moduleId,
+    req.user!.userId,
+    req.file,
+    {
+      title,
+      questionsPerAttempt: parseInt(questionsPerAttempt ?? '10', 10),
+      timeLimitMinutes:    timeLimitMinutes ? parseInt(timeLimitMinutes, 10) : null,
+      passingScore:        parseInt(passingScore ?? '60', 10),
+      maxAttempts:         parseInt(maxAttempts ?? '1', 10),
+      status:              (status as 'DRAFT' | 'ACTIVE') ?? 'DRAFT',
+    }
+  );
+  res.status(201).json({ success: true, data });
+}

@@ -60,6 +60,8 @@ function handleUpload(fieldName) {
 const router = (0, express_1.Router)();
 const adminRoles = (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN', 'TRAINER');
 router.use(auth_middleware_1.authenticate);
+// CSV Import
+router.post('/csv-import', adminRoles, handleUpload('file'), ctrl.importCsv);
 // Dashboard
 router.get('/dashboard', adminRoles, ctrl.dashboard);
 // Datasets

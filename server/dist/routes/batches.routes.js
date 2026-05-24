@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const ctrl = __importStar(require("../controllers/batches.controller"));
+const syllabusCtrl = __importStar(require("../controllers/syllabus.controller"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
 // Public
@@ -45,6 +46,8 @@ router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRo
 router.put('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN', 'TRAINER'), ctrl.update);
 // Soft delete (archive) — trainer allowed
 router.patch('/:id/archive', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN', 'TRAINER'), ctrl.archive);
+// Restore archived batch — admin only
+router.patch('/:id/restore', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN'), ctrl.restore);
 // Hard delete — admin only
 router.delete('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN'), ctrl.remove);
 // Enrollment management — admin + trainer
@@ -54,5 +57,8 @@ router.delete('/:id/enroll/:studentId', auth_middleware_1.authenticate, (0, auth
 router.put('/:id/enroll/:enrollmentId', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN', 'TRAINER'), ctrl.updateEnrollment);
 // Analytics
 router.get('/:id/analytics', auth_middleware_1.authenticate, ctrl.analytics);
+// Batch syllabus
+router.get('/:batchId/syllabus', auth_middleware_1.authenticate, syllabusCtrl.getBatchSyllabus);
+router.post('/:batchId/syllabus', auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)('SUPER_ADMIN', 'ADMIN', 'TRAINER'), syllabusCtrl.assignSyllabusToBatch);
 exports.default = router;
 //# sourceMappingURL=batches.routes.js.map

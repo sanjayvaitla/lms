@@ -12,10 +12,11 @@ function shuffle(arr) {
     }
     return a;
 }
-function pickRandomIds(pool, count) {
-    if (count >= pool.length)
-        return shuffle(pool);
-    return shuffle(pool).slice(0, count);
+function pickRandomIds(pool, count, randomize = true) {
+    const arr = randomize ? shuffle(pool) : [...pool];
+    if (count >= arr.length)
+        return arr;
+    return arr.slice(0, count);
 }
 function shuffleMcqOptions(options) {
     const correctLabel = options[0];

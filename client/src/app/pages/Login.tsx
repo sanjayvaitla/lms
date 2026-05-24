@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router';
+import { useNavigate, Navigate, Link } from 'react-router';
 import { useAuth } from '../../store/AuthContext';
 import { toast } from 'sonner';
 import { BookOpen, Eye, EyeOff, Loader2 } from 'lucide-react';
@@ -17,7 +17,7 @@ export default function LoginPage() {
     e.preventDefault();
     try {
       await login(email, password);
-      toast.success('Welcome back! 👋');
+      toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? 'Login failed. Please try again.';
@@ -43,7 +43,7 @@ export default function LoginPage() {
               <BookOpen className="w-7 h-7 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Vtricks LMS</h1>
-            <p className="text-gray-500 text-sm mt-1">Admin Portal — Sign in to continue</p>
+            <p className="text-gray-500 text-sm mt-1">Admin Portal &mdash; Sign in to continue</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -65,9 +65,14 @@ export default function LoginPage() {
 
             {/* Password */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700" htmlFor="password">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700" htmlFor="password">
+                  Password
+                </label>
+                <Link to="/forgot-password" className="text-xs text-blue-600 hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <input
                   id="password"
@@ -102,8 +107,15 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-xs text-gray-400 mt-6">
-            © 2025 Vtricks EduTech Platform. All rights reserved.
+          <p className="text-center text-sm text-gray-500 mt-5">
+            Don't have an account?{' '}
+            <Link to="/signup" className="text-blue-600 font-medium hover:underline">
+              Sign up
+            </Link>
+          </p>
+
+          <p className="text-center text-xs text-gray-400 mt-3">
+            &copy; 2025 Vtricks EduTech Platform. All rights reserved.
           </p>
         </div>
       </div>

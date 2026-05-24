@@ -4,21 +4,28 @@ import { AppError } from './error.middleware';
 
 declare global {
   namespace Express {
-    interface Request {
-      user?: TokenPayload;
-    }
+    interface User extends TokenPayload {}
   }
 }
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    throw new AppError('No token provided', 401, 'UNAUTHORIZED');
+    return next(new AppError('No token provided', 401, 'UNAUTHORIZED'));
   }
   const token = authHeader.split(' ')[1];
-  const payload = verifyAccessToken(token);
-  req.user = payload;
-  next();
+  try {
+    const payload = verifyAccessToken(token);
+    req.user = payload;
+    next();
+  } catch (err: unknown) {
+    // TokenExpiredError, JsonWebTokenError, etc. — always 401 so client can refresh
+    const message =
+      err instanceof Error && err.name === 'TokenExpiredError'
+        ? 'Token expired'
+        : 'Invalid token';
+    next(new AppError(message, 401, 'UNAUTHORIZED'));
+  }
 }
 
 export function requireRole(...roles: string[]) {

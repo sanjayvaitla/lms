@@ -9,10 +9,10 @@ export declare const createBatchSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     name: string;
     status: "UPCOMING" | "ONGOING" | "COMPLETED";
-    capacity: number;
     courseId: string;
     startDate: string;
     endDate: string;
+    capacity: number;
 }, {
     name: string;
     courseId: string;
@@ -31,17 +31,17 @@ export declare const updateBatchSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     name?: string | undefined;
     status?: "UPCOMING" | "ONGOING" | "COMPLETED" | undefined;
-    capacity?: number | undefined;
     courseId?: string | undefined;
     startDate?: string | undefined;
     endDate?: string | undefined;
+    capacity?: number | undefined;
 }, {
     name?: string | undefined;
     status?: "UPCOMING" | "ONGOING" | "COMPLETED" | undefined;
-    capacity?: number | undefined;
     courseId?: string | undefined;
     startDate?: string | undefined;
     endDate?: string | undefined;
+    capacity?: number | undefined;
 }>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 export type UpdateBatchInput = z.infer<typeof updateBatchSchema>;

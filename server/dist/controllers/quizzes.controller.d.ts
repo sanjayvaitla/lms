@@ -15,4 +15,5 @@ export declare function previewRandom(req: Request, res: Response): Promise<void
 export declare function startAttempt(req: Request, res: Response): Promise<void>;
 export declare function submitAttempt(req: Request, res: Response): Promise<void>;
 export declare function listAttempts(req: Request, res: Response): Promise<void>;
+export declare function importCsv(req: Request, res: Response): Promise<void>;
 //# sourceMappingURL=quizzes.controller.d.ts.map

@@ -7,6 +7,12 @@ exports.DATASETS_DIR = exports.ASSIGNMENTS_DIR = exports.UPLOADS_ROOT = void 0;
 exports.ensureUploadDirs = ensureUploadDirs;
 exports.safeFilename = safeFilename;
 exports.relativeUploadPath = relativeUploadPath;
+/**
+ * uploads.ts — legacy helper shim
+ * New upload code should use storageAdapter from ./storage.
+ * This file ensures the local uploads directory structure exists
+ * when S3 is not configured.
+ */
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 exports.UPLOADS_ROOT = path_1.default.join(__dirname, '../../uploads');

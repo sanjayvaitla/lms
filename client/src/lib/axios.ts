@@ -1,90 +1,101 @@
-import axios from 'axios';
+import axios from "axios";
 
-const api = axios.create({
-  baseURL: '/api/v1',
-  withCredentials: true,
-});
-
-// Attach access token from localStorage on every request
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('lms_access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Track if a refresh is already in progress
 let isRefreshing = false;
+let failedQueue: Array<{ resolve: (v: string) => void; reject: (e: unknown) => void }> = [];
 
-type QueueItem = { resolve: (token: string) => void; reject: (err: unknown) => void };
-let failedQueue: QueueItem[] = [];
-
-function processQueue(error: unknown, token: string | null): void {
-  failedQueue.forEach((p) => {
-    if (error) p.reject(error);
-    else p.resolve(token as string);
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error);
+    else prom.resolve(token!);
   });
   failedQueue = [];
 }
 
-function clearAuthAndRedirect(): void {
-  localStorage.removeItem('lms_access_token');
-  localStorage.removeItem('lms_refresh_token');
-  localStorage.removeItem('lms_user');
-  window.location.href = '/login';
+function clearAuthAndRedirect() {
+  localStorage.removeItem("lms_access_token");
+  localStorage.removeItem("lms_refresh_token");
+  localStorage.removeItem("lms_user");
+  window.location.href = "/login";
 }
 
-// On 401 — try refresh token first, only log out if refresh also fails
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  withCredentials: true,
+});
+
+// ── Request interceptor: attach access token ──────────────────────────────────
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("lms_access_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// ── Response interceptor: auto-refresh on 401 ─────────────────────────────────
 api.interceptors.response.use(
-  (res) => res,
+  (response) => response,
+
   async (error) => {
-    const originalRequest = error.config as (typeof error.config) & { _retry?: boolean };
+    const originalRequest = error.config;
+    const status = error.response?.status;
 
-    const isAuthEndpoint =
-      originalRequest?.url?.includes('/auth/refresh') ||
-      originalRequest?.url?.includes('/auth/login');
+    // Skip retry for auth routes (login, refresh, register)
+    const isAuthRoute =
+      originalRequest?.url?.includes("/auth/login") ||
+      originalRequest?.url?.includes("/auth/refresh") ||
+      originalRequest?.url?.includes("/auth/register");
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
-      const refreshToken = localStorage.getItem('lms_refresh_token');
-
-      if (!refreshToken) {
-        clearAuthAndRedirect();
-        return Promise.reject(error);
-      }
-
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        }).then((newToken) => {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          return api(originalRequest);
-        });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const { data } = await axios.post('/api/v1/auth/refresh', { refreshToken });
-        const newAccessToken: string = data.data.accessToken;
-
-        localStorage.setItem('lms_access_token', newAccessToken);
-        processQueue(null, newAccessToken);
-
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        clearAuthAndRedirect();
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+    if (status !== 401 || originalRequest._retry || isAuthRoute) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
-  },
+    // If already refreshing, queue this request
+    if (isRefreshing) {
+      return new Promise<string>((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        })
+        .catch((err) => Promise.reject(err));
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    const refreshToken = localStorage.getItem("lms_refresh_token");
+
+    if (!refreshToken) {
+      isRefreshing = false;
+      clearAuthAndRedirect();
+      return Promise.reject(error);
+    }
+
+    try {
+      const refreshRes = await axios.post(
+        `${import.meta.env.VITE_API_URL}/auth/refresh`,
+        { refreshToken },
+        { withCredentials: true }
+      );
+
+      const newAccessToken = refreshRes.data?.data?.accessToken;
+
+      if (!newAccessToken) throw new Error("No access token in refresh response");
+
+      localStorage.setItem("lms_access_token", newAccessToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${newAccessToken}`;
+
+      processQueue(null, newAccessToken);
+      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError, null);
+      clearAuthAndRedirect();
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  }
 );
 
-export default api;
+export default api;

@@ -94,8 +94,8 @@ export declare const createQuizSchema: z.ZodObject<{
     maxAttempts: z.ZodDefault<z.ZodNumber>;
     status: z.ZodDefault<z.ZodEnum<["DRAFT", "ACTIVE", "ARCHIVED"]>>;
 }, "strip", z.ZodTypeAny, {
-    title: string;
     status: "ACTIVE" | "DRAFT" | "ARCHIVED";
+    title: string;
     courseId: string;
     moduleId: string;
     questionsPerAttempt: number;
@@ -109,8 +109,8 @@ export declare const createQuizSchema: z.ZodObject<{
     title: string;
     courseId: string;
     moduleId: string;
-    description?: string | undefined;
     status?: "ACTIVE" | "DRAFT" | "ARCHIVED" | undefined;
+    description?: string | undefined;
     questionsPerAttempt?: number | undefined;
     timeLimitMinutes?: number | undefined;
     passingScore?: number | undefined;
@@ -131,9 +131,9 @@ export declare const updateQuizSchema: z.ZodObject<Omit<{
     maxAttempts: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     status: z.ZodOptional<z.ZodDefault<z.ZodEnum<["DRAFT", "ACTIVE", "ARCHIVED"]>>>;
 }, "courseId" | "moduleId">, "strip", z.ZodTypeAny, {
-    description?: string | undefined;
-    title?: string | undefined;
     status?: "ACTIVE" | "DRAFT" | "ARCHIVED" | undefined;
+    title?: string | undefined;
+    description?: string | undefined;
     questionsPerAttempt?: number | undefined;
     timeLimitMinutes?: number | undefined;
     passingScore?: number | undefined;
@@ -141,9 +141,9 @@ export declare const updateQuizSchema: z.ZodObject<Omit<{
     randomizeOptions?: boolean | undefined;
     maxAttempts?: number | undefined;
 }, {
-    description?: string | undefined;
-    title?: string | undefined;
     status?: "ACTIVE" | "DRAFT" | "ARCHIVED" | undefined;
+    title?: string | undefined;
+    description?: string | undefined;
     questionsPerAttempt?: number | undefined;
     timeLimitMinutes?: number | undefined;
     passingScore?: number | undefined;

@@ -8,7 +8,7 @@ import {
   Plus, Search, Users, Calendar, Clock, ChevronRight, X,
   Loader2, Edit, Trash2, BarChart2, BookOpen, CheckCircle2,
   PlayCircle, Timer, TrendingUp, Award, Archive, UserPlus,
-  GraduationCap, AlertCircle, UserMinus, ChevronDown, ChevronUp,
+  GraduationCap, AlertCircle, UserMinus, ChevronDown, ChevronUp, RotateCcw, FileSpreadsheet, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, differenceInDays } from 'date-fns';
@@ -138,6 +138,15 @@ export default function BatchMasterPage() {
       qc.invalidateQueries({ queryKey: ['batches'] });
     },
     onError: () => toast.error('Failed to archive batch'),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/batches/${id}/restore`),
+    onSuccess: () => {
+      toast.success('Batch restored to upcoming');
+      qc.invalidateQueries({ queryKey: ['batches'] });
+    },
+    onError: () => toast.error('Failed to restore batch'),
   });
 
   function handleDelete(id: string, name: string) {
@@ -285,6 +294,7 @@ export default function BatchMasterPage() {
                       onEdit={() => setEditBatch(batch)}
                       onDelete={() => handleDelete(batch.id, batch.name)}
                       onArchive={() => {}}
+                      onRestore={() => restoreMutation.mutate(batch.id)}
                       onProfile={() => setDetailBatchId(batch.id)}
                     />
                   ))}
@@ -332,12 +342,13 @@ export default function BatchMasterPage() {
 }
 
 // ── Batch Card ────────────────────────────────────────────────────────────────
-function BatchCard({ batch, isTrainer, onEdit, onDelete, onArchive, onProfile }: {
+function BatchCard({ batch, isTrainer, onEdit, onDelete, onArchive, onRestore, onProfile }: {
   batch: Batch;
   isTrainer: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onArchive: () => void;
+  onRestore?: () => void;
   onProfile: () => void;
 }) {
   const cfg      = STATUS_CONFIG[batch.status];
@@ -423,6 +434,15 @@ function BatchCard({ batch, isTrainer, onEdit, onDelete, onArchive, onProfile }:
             title="Archive"
           >
             <Archive className="w-4 h-4" />
+          </button>
+        )}
+        {isArchived && onRestore && (
+          <button
+            onClick={onRestore}
+            className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors border border-transparent hover:border-emerald-100"
+            title="Restore to Upcoming"
+          >
+            <RotateCcw className="w-4 h-4" />
           </button>
         )}
         {!isTrainer && (
@@ -632,11 +652,11 @@ function BatchFormModal({ title, subtitle, onClose, onSubmit, register, errors, 
 function BatchProfileDrawer({ batchId, isTrainer, initialTab, onClose, onEdit }: {
   batchId: string;
   isTrainer: boolean;
-  initialTab: 'overview' | 'enrollments' | 'analytics';
+  initialTab: 'overview' | 'enrollments' | 'analytics' | 'syllabus';
   onClose: () => void;
   onEdit: (b: Batch) => void;
 }) {
-  const [tab, setTab] = useState<'overview' | 'enrollments' | 'analytics'>(initialTab);
+  const [tab, setTab] = useState<'overview' | 'enrollments' | 'analytics' | 'syllabus'>(initialTab);
 
   const { data: batch, isLoading } = useQuery({
     queryKey: ['batch', batchId],
@@ -668,6 +688,7 @@ function BatchProfileDrawer({ batchId, isTrainer, initialTab, onClose, onEdit }:
     { key: 'overview',    label: 'Overview' },
     { key: 'enrollments', label: 'Enrollments' },
     { key: 'analytics',   label: 'Analytics' },
+    { key: 'syllabus',    label: 'Syllabus' },
   ] as const;
 
   return (
@@ -752,6 +773,9 @@ function BatchProfileDrawer({ batchId, isTrainer, initialTab, onClose, onEdit }:
           )}
           {tab === 'analytics' && (
             <AnalyticsTab batchId={batchId} />
+          )}
+          {tab === 'syllabus' && (
+            <BatchSyllabusTab batchId={batchId} courseId={batch.courseId} />
           )}
         </div>
 
@@ -1126,6 +1150,114 @@ function AnalyticsTab({ batchId }: { batchId: string }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── BatchSyllabusTab ──────────────────────────────────────────────────────────
+function BatchSyllabusTab({ batchId, courseId }: { batchId: string; courseId: string }) {
+  const qc = useQueryClient();
+
+  // All syllabi for the course
+  const { data: syllabi = [], isLoading: loadingSyllabi } = useQuery<import('../../types/api').SyllabusContent[]>({
+    queryKey: ['syllabi', courseId],
+    queryFn: async () => {
+      const { data } = await api.get(`/courses/${courseId}/syllabus`);
+      return data.data ?? [];
+    },
+  });
+
+  // Currently assigned syllabus for this batch
+  const { data: assigned, isLoading: loadingAssigned } = useQuery<import('../../types/api').SyllabusContent | null>({
+    queryKey: ['batch-syllabus', batchId],
+    queryFn: async () => {
+      const { data } = await api.get(`/batches/${batchId}/syllabus`);
+      return data.data ?? null;
+    },
+  });
+
+  const assignMut = useMutation({
+    mutationFn: (syllabusId: string) => api.post(`/batches/${batchId}/syllabus`, { syllabusId }),
+    onSuccess: () => {
+      toast.success('Syllabus assigned to batch');
+      qc.invalidateQueries({ queryKey: ['batch-syllabus', batchId] });
+    },
+    onError: () => toast.error('Failed to assign syllabus'),
+  });
+
+  if (loadingSyllabi || loadingAssigned) return (
+    <div className="space-y-3">
+      <div className="h-10 bg-gray-100 rounded-xl animate-pulse" />
+      <div className="h-10 bg-gray-100 rounded-xl animate-pulse" />
+    </div>
+  );
+
+  if (syllabi.length === 0) return (
+    <div className="text-center py-10 text-gray-400">
+      <FileSpreadsheet className="w-10 h-10 mx-auto mb-2 opacity-30" />
+      <p className="text-sm">No syllabus versions uploaded yet.</p>
+      <p className="text-xs mt-1">Upload one in Course Master → Syllabus tab.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Currently Assigned</p>
+        {assigned ? (
+          <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+            {assigned.fileType === 'PDF'
+              ? <FileText className="w-4 h-4 text-red-400 shrink-0" />
+              : <FileSpreadsheet className="w-4 h-4 text-green-500 shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">{assigned.label ?? assigned.filename}</p>
+              <p className="text-xs text-gray-500">{assigned.filename} · {new Date(assigned.createdAt).toLocaleDateString()}</p>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold border border-emerald-200">Active</span>
+          </div>
+        ) : (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-medium">
+            No syllabus assigned — batch will use the latest course syllabus by default.
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Switch Version</p>
+        <div className="space-y-1.5">
+          {syllabi.map((s, idx) => {
+            const isActive = assigned?.id === s.id;
+            const isLatest = idx === 0;
+            return (
+              <div key={s.id}
+                className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                  isActive ? 'border-emerald-300 bg-emerald-50' : 'border-gray-100 bg-white hover:border-gray-200'
+                }`}>
+                {s.fileType === 'PDF'
+                  ? <FileText className="w-4 h-4 text-red-400 shrink-0" />
+                  : <FileSpreadsheet className="w-4 h-4 text-green-500 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-800 truncate">{s.label ?? s.filename}</p>
+                    {isLatest && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold shrink-0">Latest</span>}
+                  </div>
+                  <p className="text-xs text-gray-400">{new Date(s.createdAt).toLocaleDateString()}{s.uploadedByName ? ` by ${s.uploadedByName}` : ''}</p>
+                </div>
+                {isActive
+                  ? <span className="text-[10px] text-emerald-600 font-semibold shrink-0">Active</span>
+                  : (
+                    <button onClick={() => assignMut.mutate(s.id)}
+                      disabled={assignMut.isPending}
+                      className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 shrink-0">
+                      Use this
+                    </button>
+                  )
+                }
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

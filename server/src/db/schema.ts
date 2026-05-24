@@ -1,9 +1,6 @@
 /**
  * Vtricks LMS -- PostgreSQL Schema Runner
  * Run: pnpm db:schema   (from /server)
- *
- * Creates all tables with CHECK constraints (no Prisma, no ORM).
- * Safe to re-run -- uses CREATE TABLE IF NOT EXISTS.
  */
 
 import 'dotenv/config';
@@ -18,15 +15,28 @@ const schema = `
 -- Extensions
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Auto-update trigger function (defined first so triggers below can use it)
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $func$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$func$ LANGUAGE plpgsql;
+
 -- Users
 CREATE TABLE IF NOT EXISTS users (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name          TEXT        NOT NULL,
-  email         TEXT        NOT NULL UNIQUE,
-  password_hash TEXT        NOT NULL,
+  email         TEXT        UNIQUE,
+  password_hash TEXT,
   role          TEXT        NOT NULL DEFAULT 'STUDENT'
                             CHECK (role IN ('SUPER_ADMIN','ADMIN','TRAINER','STUDENT')),
   avatar_url    TEXT,
+  auth_provider TEXT        NOT NULL DEFAULT 'LOCAL',
+  google_id     TEXT        UNIQUE,
+  phone_number  TEXT        UNIQUE,
+  is_phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -83,6 +93,16 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- OTP Verifications (MSG91 flow)
+CREATE TABLE IF NOT EXISTS otp_verifications (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone       TEXT        NOT NULL,
+  otp_hash    TEXT        NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  verified    BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Messages
 CREATE TABLE IF NOT EXISTS messages (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -103,29 +123,27 @@ CREATE TABLE IF NOT EXISTS trainer_profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Course Syllabi
+-- Course Syllabi (multi-version per course)
 CREATE TABLE IF NOT EXISTS course_syllabi (
-  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  course_id    UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-  filename     TEXT        NOT NULL,
-  file_type    TEXT        NOT NULL CHECK (file_type IN ('PDF', 'EXCEL')),
-  content_text TEXT        NOT NULL,
-  uploaded_by  UUID        REFERENCES users(id) ON DELETE SET NULL,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id       UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  filename        TEXT        NOT NULL,
+  file_type       TEXT        NOT NULL CHECK (file_type IN ('PDF', 'EXCEL', 'CSV')),
+  content_text    TEXT        NOT NULL,
+  structured_data JSONB,
+  label           TEXT,
+  uploaded_by     UUID        REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_courses_trainer       ON courses(trainer_id);
-CREATE INDEX IF NOT EXISTS idx_courses_status        ON courses(status);
-CREATE INDEX IF NOT EXISTS idx_batches_course        ON batches(course_id);
-CREATE INDEX IF NOT EXISTS idx_enrollments_student   ON enrollments(student_id);
-CREATE INDEX IF NOT EXISTS idx_enrollments_batch     ON enrollments(batch_id);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user   ON refresh_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_messages_sender       ON messages(sender_id);
-CREATE INDEX IF NOT EXISTS idx_messages_receiver     ON messages(receiver_id);
-CREATE INDEX IF NOT EXISTS idx_course_syllabi_course ON course_syllabi(course_id);
+-- Batch Syllabus Assignment (which version a batch uses)
+CREATE TABLE IF NOT EXISTS batch_syllabi (
+  batch_id    UUID        PRIMARY KEY REFERENCES batches(id) ON DELETE CASCADE,
+  syllabus_id UUID        NOT NULL REFERENCES course_syllabi(id) ON DELETE CASCADE,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- ── Course Modules (sequential release for quizzes) ─────────────────────────
+-- Course Modules
 CREATE TABLE IF NOT EXISTS course_modules (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   course_id     UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
@@ -140,7 +158,7 @@ CREATE TABLE IF NOT EXISTS course_modules (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Quiz reference datasets ───────────────────────────────────────────────────
+-- Quiz Reference Datasets
 CREATE TABLE IF NOT EXISTS quiz_datasets (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   course_id     UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
@@ -153,7 +171,7 @@ CREATE TABLE IF NOT EXISTS quiz_datasets (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Question bank ─────────────────────────────────────────────────────────────
+-- Question Bank
 CREATE TABLE IF NOT EXISTS quiz_questions (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   course_id       UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
@@ -173,7 +191,7 @@ CREATE TABLE IF NOT EXISTS quiz_questions (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Quizzes (linked to modules; released when module completed) ───────────────
+-- Quizzes
 CREATE TABLE IF NOT EXISTS quizzes (
   id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   course_id             UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
@@ -181,34 +199,31 @@ CREATE TABLE IF NOT EXISTS quizzes (
   title                 TEXT        NOT NULL,
   description           TEXT,
   questions_per_attempt INT         NOT NULL DEFAULT 10 CHECK (questions_per_attempt > 0),
-  time_limit_minutes    INT         CHECK (time_limit_minutes IS NULL OR time_limit_minutes > 0),
-  passing_score         INT         NOT NULL DEFAULT 60 CHECK (passing_score BETWEEN 0 AND 100),
-  randomize_questions   BOOLEAN     NOT NULL DEFAULT true,
-  randomize_options     BOOLEAN     NOT NULL DEFAULT true,
-  max_attempts          INT         NOT NULL DEFAULT 1 CHECK (max_attempts > 0),
+  time_limit_minutes    INT         CHECK (time_limit_minutes > 0),
+  passing_score         INT         NOT NULL DEFAULT 70
+                                    CHECK (passing_score BETWEEN 0 AND 100),
+  randomize_questions   BOOLEAN     NOT NULL DEFAULT TRUE,
+  randomize_options     BOOLEAN     NOT NULL DEFAULT TRUE,
+  max_attempts          INT         NOT NULL DEFAULT 3 CHECK (max_attempts > 0),
   status                TEXT        NOT NULL DEFAULT 'DRAFT'
                                     CHECK (status IN ('DRAFT','ACTIVE','ARCHIVED')),
   created_by            UUID        REFERENCES users(id) ON DELETE SET NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (module_id)
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Quiz attempts (randomized question set per student) ───────────────────────
+-- Quiz Attempts
 CREATE TABLE IF NOT EXISTS quiz_attempts (
-  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  quiz_id         UUID        NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-  student_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  attempt_number  INT         NOT NULL DEFAULT 1 CHECK (attempt_number > 0),
-  question_ids    JSONB       NOT NULL,
-  shuffled_options JSONB,
-  started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  submitted_at    TIMESTAMPTZ,
-  score           FLOAT       CHECK (score IS NULL OR score BETWEEN 0 AND 100),
-  total_points    INT,
-  earned_points   INT,
-  status          TEXT        NOT NULL DEFAULT 'IN_PROGRESS'
-                              CHECK (status IN ('IN_PROGRESS','SUBMITTED','GRADED')),
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id          UUID        NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  student_id       UUID        NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+  attempt_number   INT         NOT NULL DEFAULT 1,
+  score            INT,
+  passed           BOOLEAN,
+  started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  submitted_at     TIMESTAMPTZ,
+  status           TEXT        NOT NULL DEFAULT 'IN_PROGRESS'
+                               CHECK (status IN ('IN_PROGRESS','SUBMITTED','EXPIRED')),
   UNIQUE (quiz_id, student_id, attempt_number)
 );
 
@@ -218,59 +233,76 @@ CREATE TABLE IF NOT EXISTS quiz_attempt_answers (
   question_id      UUID        NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
   selected_answer  TEXT,
   is_correct       BOOLEAN,
-  points_earned    INT         NOT NULL DEFAULT 0,
-  UNIQUE (attempt_id, question_id)
+  points_awarded   INT         NOT NULL DEFAULT 0
 );
 
--- ── Assignments (PDF uploads) ─────────────────────────────────────────────────
+-- Assignments
 CREATE TABLE IF NOT EXISTS assignments (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  course_id       UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-  module_id       UUID        REFERENCES course_modules(id) ON DELETE SET NULL,
+  course_id       UUID        NOT NULL REFERENCES courses(id)        ON DELETE CASCADE,
+  module_id       UUID        REFERENCES course_modules(id)          ON DELETE SET NULL,
   title           TEXT        NOT NULL,
   description     TEXT,
   pdf_filename    TEXT        NOT NULL,
   pdf_path        TEXT        NOT NULL,
-  pdf_size_bytes  INT,
+  pdf_size_bytes  INT         NOT NULL DEFAULT 0,
   due_date        TIMESTAMPTZ,
   max_score       INT         NOT NULL DEFAULT 100 CHECK (max_score > 0),
   status          TEXT        NOT NULL DEFAULT 'DRAFT'
-                              CHECK (status IN ('DRAFT','PUBLISHED','CLOSED')),
+                              CHECK (status IN ('DRAFT','PUBLISHED','ARCHIVED')),
   created_by      UUID        REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS assignment_batches (
-  assignment_id   UUID        NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
-  batch_id        UUID        NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+  assignment_id UUID NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+  batch_id      UUID NOT NULL REFERENCES batches(id)     ON DELETE CASCADE,
   PRIMARY KEY (assignment_id, batch_id)
 );
 
 CREATE TABLE IF NOT EXISTS assignment_submissions (
   id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   assignment_id   UUID        NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
-  student_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  submitted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  notes           TEXT,
+  student_id      UUID        NOT NULL REFERENCES users(id)       ON DELETE CASCADE,
   file_path       TEXT,
-  score           FLOAT       CHECK (score IS NULL OR score >= 0),
+  submitted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  score           INT,
   feedback        TEXT,
   status          TEXT        NOT NULL DEFAULT 'SUBMITTED'
-                              CHECK (status IN ('PENDING','SUBMITTED','GRADED')),
+                              CHECK (status IN ('SUBMITTED','GRADED','LATE')),
   UNIQUE (assignment_id, student_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_course_modules_course     ON course_modules(course_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_datasets_course      ON quiz_datasets(course_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_questions_course     ON quiz_questions(course_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_questions_module     ON quiz_questions(module_id);
-CREATE INDEX IF NOT EXISTS idx_quizzes_course            ON quizzes(course_id);
-CREATE INDEX IF NOT EXISTS idx_quizzes_module            ON quizzes(module_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz        ON quiz_attempts(quiz_id);
-CREATE INDEX IF NOT EXISTS idx_assignments_course        ON assignments(course_id);
-CREATE INDEX IF NOT EXISTS idx_assignment_batches_batch  ON assignment_batches(batch_id);
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_courses_trainer        ON courses(trainer_id);
+CREATE INDEX IF NOT EXISTS idx_batches_course         ON batches(course_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_batch      ON enrollments(batch_id);
+CREATE INDEX IF NOT EXISTS idx_enrollments_student    ON enrollments(student_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user    ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sender        ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_receiver      ON messages(receiver_id);
+CREATE INDEX IF NOT EXISTS idx_course_modules_course  ON course_modules(course_id);
+CREATE INDEX IF NOT EXISTS idx_course_syllabi_course  ON course_syllabi(course_id);
+CREATE INDEX IF NOT EXISTS idx_batch_syllabi_syllabus ON batch_syllabi(syllabus_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_datasets_course   ON quiz_datasets(course_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_course  ON quiz_questions(course_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_module  ON quiz_questions(module_id);
+CREATE INDEX IF NOT EXISTS idx_quizzes_course         ON quizzes(course_id);
+CREATE INDEX IF NOT EXISTS idx_quizzes_module         ON quizzes(module_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz     ON quiz_attempts(quiz_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_course     ON assignments(course_id);
 
+-- Triggers
+DO $$ BEGIN
+  CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TRIGGER trg_courses_updated_at BEFORE UPDATE ON courses FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TRIGGER trg_batches_updated_at BEFORE UPDATE ON batches FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE TRIGGER trg_course_modules_updated_at BEFORE UPDATE ON course_modules FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -283,43 +315,131 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE TRIGGER trg_assignments_updated_at BEFORE UPDATE ON assignments FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+`;
 
--- Auto-update updated_at trigger function
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $func$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$func$ LANGUAGE plpgsql;
+// Legacy migrations for existing databases that were created before the new schema
+const migrations = `
+DO $$ BEGIN
+  ALTER TABLE course_syllabi ADD COLUMN IF NOT EXISTS structured_data JSONB;
+EXCEPTION WHEN others THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TRIGGER trg_users_updated_at   BEFORE UPDATE ON users   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  ALTER TABLE course_syllabi ADD COLUMN IF NOT EXISTS label TEXT;
+EXCEPTION WHEN others THEN NULL; END $$;
+
 DO $$ BEGIN
-  CREATE TRIGGER trg_courses_updated_at BEFORE UPDATE ON courses FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  ALTER TABLE course_syllabi DROP CONSTRAINT IF EXISTS course_syllabi_file_type_check;
+EXCEPTION WHEN others THEN NULL; END $$;
+
 DO $$ BEGIN
-  CREATE TRIGGER trg_batches_updated_at BEFORE UPDATE ON batches FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  ALTER TABLE course_syllabi ADD CONSTRAINT course_syllabi_file_type_check
+    CHECK (file_type IN ('PDF', 'EXCEL', 'CSV'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS batch_syllabi (
+    batch_id    UUID PRIMARY KEY REFERENCES batches(id) ON DELETE CASCADE,
+    syllabus_id UUID NOT NULL REFERENCES course_syllabi(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_batch_syllabi_syllabus ON batch_syllabi(syllabus_id);
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'LOCAL';
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT;
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD CONSTRAINT users_google_id_unique UNIQUE (google_id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT;
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD CONSTRAINT users_phone_number_unique UNIQUE (phone_number);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS is_phone_verified BOOLEAN NOT NULL DEFAULT FALSE;
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS otp_verifications (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone       TEXT        NOT NULL,
+    otp_hash    TEXT        NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    verified    BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_otp_phone ON otp_verifications(phone);
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_users_phone_number ON users(phone_number);
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT        NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used       BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_pwd_reset_user ON password_reset_tokens(user_id);
+EXCEPTION WHEN others THEN NULL; END $$;
 `;
 
 async function runSchema() {
   const client = await pool.connect();
   try {
-    console.log('Running schema migration...\n');
+    console.log("Running schema...");
     await client.query(schema);
-    console.log('Schema applied successfully!\n');
-    console.log('  Tables: users, courses, batches, enrollments, refresh_tokens, messages, trainer_profiles, course_syllabi');
-    console.log('           course_modules, quiz_datasets, quiz_questions, quizzes, quiz_attempts, assignments');
-    console.log('  Indexes + updated_at triggers added\n');
+    console.log("  Base schema applied.");
+    await client.query(migrations);
+    console.log("  Migrations applied.");
+    console.log("  Tables ready: users, courses, batches, enrollments,");
+    console.log("    refresh_tokens, otp_verifications, trainer_profiles,");
+    console.log("    course_syllabi, batch_syllabi, course_modules,");
+    console.log("    quizzes, quiz_questions, quiz_attempts,");
+    console.log("    assignments, assignment_submissions, messages,");
+    console.log("    password_reset_tokens.");
+    console.log("Schema complete.");
   } catch (err) {
-    console.error('Schema failed:', err);
-    process.exit(1);
+    console.error("Schema error:", err);
+    throw err;
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-runSchema();
+runSchema().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

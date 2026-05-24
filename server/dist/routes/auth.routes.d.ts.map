@@ -1,1 +1,1 @@
-{"version":3,"file":"auth.routes.d.ts","sourceRoot":"","sources":["../../src/routes/auth.routes.ts"],"names":[],"mappings":"AAIA,QAAA,MAAM,MAAM,EAAE,OAAO,SAAS,EAAE,MAAiB,CAAC;AAQlD,eAAe,MAAM,CAAC"}
+{"version":3,"file":"auth.routes.d.ts","sourceRoot":"","sources":["../../src/routes/auth.routes.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AAMjC,QAAA,MAAM,MAAM,EAAE,MAAiB,CAAC;AAqBhC,eAAe,MAAM,CAAC"}

@@ -39,6 +39,12 @@ export async function archive(req: Request, res: Response) {
   res.json({ success: true, data: batch });
 }
 
+export async function restore(req: Request, res: Response) {
+  if (isTrainer(req)) throw new AppError('Trainers cannot restore batches', 403, 'FORBIDDEN');
+  const batch = await svc.restoreBatch(String(req.params.id));
+  res.json({ success: true, data: batch });
+}
+
 export async function remove(req: Request, res: Response) {
   if (isTrainer(req)) throw new AppError('Trainers cannot permanently delete batches', 403, 'FORBIDDEN');
   await svc.deleteBatch(String(req.params.id));
@@ -53,14 +59,14 @@ export async function enroll(req: Request, res: Response) {
 }
 
 export async function unenroll(req: Request, res: Response) {
-  const batch = await svc.unenrollStudent(String(req.params.id), String(req.params.studentId));
-  res.json({ success: true, data: batch });
+  await svc.unenrollStudent(String(req.params.id), String(req.params.studentId));
+  res.json({ success: true, message: 'Student unenrolled' });
 }
 
 export async function updateEnrollment(req: Request, res: Response) {
   const { completionPct, grade } = req.body as { completionPct: number; grade?: string };
-  const result = await svc.updateEnrollment(String(req.params.enrollmentId), completionPct, grade);
-  res.json({ success: true, data: result });
+  await svc.updateEnrollment(String(req.params.enrollmentId), completionPct, grade);
+  res.json({ success: true, message: 'Enrollment updated' });
 }
 
 export async function availableStudents(req: Request, res: Response) {
@@ -69,6 +75,6 @@ export async function availableStudents(req: Request, res: Response) {
 }
 
 export async function analytics(req: Request, res: Response) {
-  const data = await svc.getBatchAnalytics(String(req.params.id));
-  res.json({ success: true, data });
+  const result = await svc.getBatchAnalytics(String(req.params.id));
+  res.json({ success: true, data: result });
 }

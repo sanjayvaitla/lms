@@ -1,11 +1,7 @@
-import fs from 'fs';
-import path from 'path';
 import db from '../lib/db';
 import { AppError } from '../middleware/error.middleware';
-import { ensureUploadDirs, safeFilename, relativeUploadPath, ASSIGNMENTS_DIR } from '../lib/uploads';
+import { storageAdapter } from '../lib/storage';
 import type { CreateAssignmentInput } from '../validators/assignment.validator';
-
-ensureUploadDirs();
 
 export async function getAssignmentDashboard() {
   const [total, published, submissions, pending] = await Promise.all([
@@ -91,9 +87,10 @@ export async function createAssignment(
   const course = await db.query('SELECT id FROM courses WHERE id = $1', [input.courseId]);
   if (!course.rowCount) throw new AppError('Course not found', 404, 'NOT_FOUND');
 
-  const fname = safeFilename(file.originalname);
-  const diskPath = path.join(ASSIGNMENTS_DIR, fname);
-  fs.writeFileSync(diskPath, file.buffer);
+  const stored = await storageAdapter.upload(
+    { buffer: file.buffer, originalname: file.originalname, mimetype: 'application/pdf' },
+    'assignments',
+  );
 
   const assignmentId = await db.transaction(async (tx) => {
     const { rows } = await db.query(
@@ -103,7 +100,7 @@ export async function createAssignment(
        RETURNING id`,
       [
         input.courseId, input.moduleId ?? null, input.title, input.description ?? null,
-        file.originalname, relativeUploadPath('assignments', fname), file.size,
+        file.originalname, stored.key, file.size,
         input.dueDate ?? null, input.maxScore, input.status, createdBy,
       ],
       tx,
@@ -155,8 +152,7 @@ export async function deleteAssignment(id: string) {
   if (!rows.length) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
   await db.query('DELETE FROM assignments WHERE id = $1', [id]);
   const fp = rows[0].pdf_path as string;
-  const full = path.join(__dirname, '../../uploads', fp);
-  if (fs.existsSync(full)) fs.unlinkSync(full);
+  if (fp) await storageAdapter.delete(fp);
 }
 
 export async function gradeSubmission(submissionId: string, score: number, feedback?: string) {

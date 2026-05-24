@@ -83,12 +83,32 @@ export interface TrainerCourse {
   completionPct: number;
 }
 
+export interface SyllabusSession {
+  session:  string | number;
+  module:   string;
+  topics:   string[];
+  duration: number | null;
+}
+
+export interface SyllabusSheet {
+  name:        string;
+  courseTitle: string;
+  sessions:    SyllabusSession[];
+}
+
+export interface StructuredSyllabus {
+  type:   'excel_structured' | 'csv_structured';
+  sheets: SyllabusSheet[];
+}
+
 export interface SyllabusContent {
-  id: string;
-  filename: string;
-  fileType: 'PDF' | 'EXCEL';
-  contentText: string;
-  createdAt: string;
+  id:             string;
+  filename:       string;
+  fileType:       'PDF' | 'EXCEL' | 'CSV';
+  label:          string | null;
+  contentText:    string;
+  structuredData: StructuredSyllabus | null;
+  createdAt:      string;
   uploadedByName?: string;
 }
 
@@ -237,4 +257,3 @@ export interface BatchAnalytics {
   completionBuckets: { range: string; count: number }[];
   students: { studentName: string; completionPct: number; grade?: string | null; enrolledAt: string }[];
 }
-

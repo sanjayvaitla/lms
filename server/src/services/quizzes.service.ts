@@ -1,21 +1,47 @@
-import fs from 'fs';
-import path from 'path';
 import db from '../lib/db';
 import { AppError } from '../middleware/error.middleware';
 import { extractTextFromFile } from '../lib/fileExtract';
 import { pickRandomIds, shuffle, shuffleMcqOptions } from '../lib/quizRandomize';
-import { DATASETS_DIR, ensureUploadDirs, safeFilename, relativeUploadPath } from '../lib/uploads';
+import { storageAdapter } from '../lib/storage';
 import type { CreateQuestionInput, CreateQuizInput } from '../validators/quiz.validator';
 
-ensureUploadDirs();
+// ── Auto-number helper ────────────────────────────────────────────────────────
+async function nextQuizTitle(courseId: string): Promise<string> {
+  const { rows } = await db.query(
+    'SELECT COUNT(*)::int AS cnt FROM quizzes WHERE course_id = $1',
+    [courseId],
+  );
+  return `Quiz ${(rows[0].cnt as number) + 1}`;
+}
+
+// ── CSV helper ────────────────────────────────────────────────────────────────
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
 
 // ── Dashboard stats ───────────────────────────────────────────────────────────
 export async function getQuizDashboard() {
   const [mods, qs, quizzes, attempts] = await Promise.all([
-    db.query(`SELECT COUNT(*)::int AS cnt FROM course_modules`),
-    db.query(`SELECT COUNT(*)::int AS cnt FROM quiz_questions`),
-    db.query(`SELECT COUNT(*)::int AS cnt FROM quizzes WHERE status != 'ARCHIVED'`),
-    db.query(`SELECT COUNT(*)::int AS cnt FROM quiz_attempts WHERE status = 'SUBMITTED'`),
+    db.query('SELECT COUNT(*)::int AS cnt FROM course_modules'),
+    db.query('SELECT COUNT(*)::int AS cnt FROM quiz_questions'),
+    db.query("SELECT COUNT(*)::int AS cnt FROM quizzes WHERE status != 'ARCHIVED'"),
+    db.query("SELECT COUNT(*)::int AS cnt FROM quiz_attempts WHERE status = 'SUBMITTED'"),
   ]);
   const released = await db.query(
     `SELECT COUNT(*)::int AS cnt FROM quizzes q
@@ -62,24 +88,25 @@ export async function uploadDataset(
   if (!course.rowCount) throw new AppError('Course not found', 404, 'NOT_FOUND');
 
   const { contentText, fileType } = await extractTextFromFile(file);
-  const fname = safeFilename(file.originalname);
-  const diskPath = path.join(DATASETS_DIR, fname);
-  fs.writeFileSync(diskPath, file.buffer);
+  const stored = await storageAdapter.upload(file, 'datasets');
 
   const { rows } = await db.query(
-    `INSERT INTO quiz_datasets (course_id, title, filename, file_type, content_text, file_path, uploaded_by)
+    `INSERT INTO quiz_datasets
+       (course_id, title, filename, file_type, content_text, file_path, uploaded_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7)
-     RETURNING id, course_id AS "courseId", title, filename, file_type AS "fileType",
-               content_text AS "contentText", file_path AS "filePath", created_at AS "createdAt"`,
-    [courseId, title, file.originalname, fileType, contentText, relativeUploadPath('datasets', fname), uploadedBy],
+     RETURNING id, course_id AS "courseId", title, filename,
+               file_type AS "fileType", content_text AS "contentText",
+               file_path AS "filePath", created_at AS "createdAt"`,
+    [courseId, title, file.originalname, fileType, contentText, stored.key, uploadedBy],
   );
   return rows[0];
 }
 
 export async function getDataset(id: string) {
   const { rows } = await db.query(
-    `SELECT id, course_id AS "courseId", title, filename, file_type AS "fileType",
-            content_text AS "contentText", file_path AS "filePath", created_at AS "createdAt"
+    `SELECT id, course_id AS "courseId", title, filename,
+            file_type AS "fileType", content_text AS "contentText",
+            file_path AS "filePath", created_at AS "createdAt"
      FROM quiz_datasets WHERE id = $1`,
     [id],
   );
@@ -92,10 +119,7 @@ export async function deleteDataset(id: string) {
   if (!rows.length) throw new AppError('Dataset not found', 404, 'NOT_FOUND');
   const fp = rows[0].file_path as string | null;
   await db.query('DELETE FROM quiz_datasets WHERE id = $1', [id]);
-  if (fp) {
-    const full = path.join(__dirname, '../../uploads', fp);
-    if (fs.existsSync(full)) fs.unlinkSync(full);
-  }
+  if (fp) await storageAdapter.delete(fp);
 }
 
 // ── Questions ─────────────────────────────────────────────────────────────────
@@ -125,11 +149,12 @@ export async function createQuestion(input: CreateQuestionInput) {
   const opts = input.questionType === 'MCQ' ? JSON.stringify(input.options ?? []) : null;
   const { rows } = await db.query(
     `INSERT INTO quiz_questions
-       (course_id, module_id, dataset_id, question_text, question_type, options, correct_answer, explanation, points, difficulty, tags)
+       (course_id, module_id, dataset_id, question_text, question_type,
+        options, correct_answer, explanation, points, difficulty, tags)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-     RETURNING id, course_id AS "courseId", module_id AS "moduleId", question_text AS "questionText",
-               question_type AS "questionType", options, correct_answer AS "correctAnswer",
-               points, difficulty, tags`,
+     RETURNING id, course_id AS "courseId", module_id AS "moduleId",
+               question_text AS "questionText", question_type AS "questionType",
+               options, correct_answer AS "correctAnswer", points, difficulty, tags`,
     [
       input.courseId, input.moduleId ?? null, input.datasetId ?? null,
       input.questionText, input.questionType, opts,
@@ -149,8 +174,8 @@ export async function listQuizzes(filters: { courseId?: string; releasedOnly?: b
   const clauses: string[] = [];
   const params: unknown[] = [];
   let i = 1;
-  if (filters.courseId) { clauses.push(`q.course_id = $${i++}`); params.push(filters.courseId); }
-  if (filters.releasedOnly) { clauses.push(`m.status = 'COMPLETED'`); }
+  if (filters.courseId)    { clauses.push(`q.course_id = $${i++}`); params.push(filters.courseId); }
+  if (filters.releasedOnly){ clauses.push(`m.status = 'COMPLETED'`); }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const { rows } = await db.query(
     `SELECT q.id, q.course_id AS "courseId", c.title AS "courseTitle",
@@ -158,21 +183,20 @@ export async function listQuizzes(filters: { courseId?: string; releasedOnly?: b
             m.sort_order AS "moduleOrder", q.title, q.description,
             q.questions_per_attempt AS "questionsPerAttempt",
             q.time_limit_minutes AS "timeLimitMinutes", q.passing_score AS "passingScore",
-            q.randomize_questions AS "randomizeQuestions", q.randomize_options AS "randomizeOptions",
+            q.randomize_questions AS "randomizeQuestions",
+            q.randomize_options AS "randomizeOptions",
             q.max_attempts AS "maxAttempts", q.status,
-            (SELECT COUNT(*)::int FROM quiz_questions qq WHERE qq.module_id = q.module_id) AS "poolSize",
+            (SELECT COUNT(*)::int FROM quiz_questions qq
+             WHERE qq.module_id = q.module_id) AS "poolSize",
             q.created_at AS "createdAt"
      FROM quizzes q
      JOIN courses c ON c.id = q.course_id
      JOIN course_modules m ON m.id = q.module_id
      ${where}
-     ORDER BY m.sort_order ASC`,
+     ORDER BY m.sort_order, q.created_at`,
     params,
   );
-  return rows.map((r) => ({
-    ...r,
-    isReleased: r.moduleStatus === 'COMPLETED',
-  }));
+  return rows;
 }
 
 export async function createQuiz(input: CreateQuizInput, createdBy: string) {
@@ -185,14 +209,19 @@ export async function createQuiz(input: CreateQuizInput, createdBy: string) {
   const existing = await db.query('SELECT id FROM quizzes WHERE module_id = $1', [input.moduleId]);
   if (existing.rowCount) throw new AppError('This module already has a quiz', 409, 'CONFLICT');
 
+  const title = (input.title && input.title.trim())
+    ? input.title.trim()
+    : await nextQuizTitle(input.courseId);
+
   const { rows } = await db.query(
     `INSERT INTO quizzes
-       (course_id, module_id, title, description, questions_per_attempt, time_limit_minutes,
-        passing_score, randomize_questions, randomize_options, max_attempts, status, created_by)
+       (course_id, module_id, title, description, questions_per_attempt,
+        time_limit_minutes, passing_score, randomize_questions, randomize_options,
+        max_attempts, status, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      RETURNING id, module_id AS "moduleId", title, status`,
     [
-      input.courseId, input.moduleId, input.title, input.description ?? null,
+      input.courseId, input.moduleId, title, input.description ?? null,
       input.questionsPerAttempt, input.timeLimitMinutes ?? null,
       input.passingScore, input.randomizeQuestions, input.randomizeOptions,
       input.maxAttempts, input.status, createdBy,
@@ -206,7 +235,8 @@ export async function updateQuiz(id: string, input: Partial<CreateQuizInput>) {
   const params: unknown[] = [];
   let i = 1;
   const map: Record<string, string> = {
-    title: 'title', description: 'description', questionsPerAttempt: 'questions_per_attempt',
+    title: 'title', description: 'description',
+    questionsPerAttempt: 'questions_per_attempt',
     timeLimitMinutes: 'time_limit_minutes', passingScore: 'passing_score',
     randomizeQuestions: 'randomize_questions', randomizeOptions: 'randomize_options',
     maxAttempts: 'max_attempts', status: 'status',
@@ -217,7 +247,7 @@ export async function updateQuiz(id: string, input: Partial<CreateQuizInput>) {
       params.push((input as Record<string, unknown>)[k]);
     }
   }
-  if (!fields.length) throw new AppError('No fields', 400, 'VALIDATION_ERROR');
+  if (!fields.length) throw new AppError('No fields to update', 400, 'VALIDATION_ERROR');
   params.push(id);
   const { rows } = await db.query(
     `UPDATE quizzes SET ${fields.join(', ')} WHERE id = $${i} RETURNING id, title, status`,
@@ -231,169 +261,363 @@ export async function deleteQuiz(id: string) {
   await db.query('DELETE FROM quizzes WHERE id = $1', [id]);
 }
 
-// ── Start attempt (randomized questions per student) ──────────────────────────
+// ── Attempts ──────────────────────────────────────────────────────────────────
 export async function startAttempt(quizId: string, studentId: string) {
   const quizRes = await db.query(
-    `SELECT q.*, m.status AS module_status
-     FROM quizzes q
-     JOIN course_modules m ON m.id = q.module_id
-     WHERE q.id = $1`,
+    `SELECT q.id, q.questions_per_attempt AS "questionsPerAttempt",
+            q.max_attempts AS "maxAttempts",
+            q.randomize_questions AS "randomizeQuestions",
+            q.randomize_options AS "randomizeOptions",
+            q.time_limit_minutes AS "timeLimitMinutes",
+            q.passing_score AS "passingScore",
+            q.status
+     FROM quizzes q WHERE q.id = $1`,
     [quizId],
   );
   if (!quizRes.rows.length) throw new AppError('Quiz not found', 404, 'NOT_FOUND');
-  const quiz = quizRes.rows[0] as Record<string, unknown>;
+  const quiz = quizRes.rows[0] as {
+    id: string; questionsPerAttempt: number; maxAttempts: number;
+    randomizeQuestions: boolean; randomizeOptions: boolean;
+    timeLimitMinutes: number | null; passingScore: number; status: string;
+  };
 
-  if (quiz.module_status !== 'COMPLETED') {
-    throw new AppError('Quiz not released yet — complete the module first', 403, 'QUIZ_LOCKED');
-  }
-  if (quiz.status !== 'ACTIVE') {
-    throw new AppError('Quiz is not active', 403, 'QUIZ_INACTIVE');
-  }
+  if (quiz.status !== 'ACTIVE') throw new AppError('Quiz is not active', 403, 'FORBIDDEN');
 
-  const poolRes = await db.query(
-    `SELECT id, question_text, question_type, options, correct_answer, points
-     FROM quiz_questions WHERE module_id = $1`,
-    [quiz.module_id],
-  );
-  const pool = poolRes.rows as { id: string; question_text: string; question_type: string; options: string[] | null; correct_answer: string; points: number }[];
-  if (!pool.length) throw new AppError('No questions in pool for this module', 422, 'EMPTY_POOL');
-
-  const perAttempt = Math.min(quiz.questions_per_attempt as number, pool.length);
-  const questionIds = quiz.randomize_questions
-    ? pickRandomIds(pool.map((q) => q.id), perAttempt)
-    : pool.slice(0, perAttempt).map((q) => q.id);
-
-  const attemptCountRes = await db.query(
-    `SELECT COUNT(*)::int AS cnt FROM quiz_attempts WHERE quiz_id = $1 AND student_id = $2`,
+  const attemptsRes = await db.query(
+    `SELECT COUNT(*)::int AS cnt FROM quiz_attempts
+     WHERE quiz_id = $1 AND student_id = $2 AND status = 'SUBMITTED'`,
     [quizId, studentId],
   );
-  const attemptNum = (attemptCountRes.rows[0].cnt as number) + 1;
-  if (attemptNum > (quiz.max_attempts as number)) {
-    throw new AppError('Maximum attempts reached', 403, 'MAX_ATTEMPTS');
+  if ((attemptsRes.rows[0].cnt as number) >= quiz.maxAttempts) {
+    throw new AppError('Maximum attempts reached', 403, 'MAX_ATTEMPTS_REACHED');
   }
 
-  const shuffledOptions: Record<string, string[]> = {};
-  if (quiz.randomize_options) {
-    for (const qid of questionIds) {
-      const q = pool.find((p) => p.id === qid);
-      if (q?.question_type === 'MCQ' && q.options?.length) {
-        const opts = Array.isArray(q.options) ? q.options : JSON.parse(String(q.options));
-        shuffledOptions[qid] = shuffleMcqOptions(opts).shuffled;
-      }
-    }
-  }
+  const attemptNumRes = await db.query(
+    'SELECT COUNT(*)::int AS cnt FROM quiz_attempts WHERE quiz_id = $1 AND student_id = $2',
+    [quizId, studentId],
+  );
+  const attemptNumber = (attemptNumRes.rows[0].cnt as number) + 1;
 
-  const { rows } = await db.query(
-    `INSERT INTO quiz_attempts (quiz_id, student_id, attempt_number, question_ids, shuffled_options)
-     VALUES ($1,$2,$3,$4,$5)
-     RETURNING id, attempt_number AS "attemptNumber", started_at AS "startedAt"`,
-    [quizId, studentId, attemptNum, JSON.stringify(questionIds), JSON.stringify(shuffledOptions)],
+  const qRes = await db.query(
+    `SELECT id, question_text AS "questionText", question_type AS "questionType",
+            options, correct_answer AS "correctAnswer", points, difficulty, explanation
+     FROM quiz_questions
+     WHERE module_id = (SELECT module_id FROM quizzes WHERE id = $1)`,
+    [quizId],
   );
 
-  const questions = questionIds.map((qid) => {
-    const q = pool.find((p) => p.id === qid)!;
-    const displayOptions = shuffledOptions[qid] ?? (Array.isArray(q.options) ? q.options : q.options ? JSON.parse(String(q.options)) : []);
-    return {
-      id: q.id,
-      questionText: q.question_text,
-      questionType: q.question_type,
-      options: displayOptions,
-      points: q.points,
-    };
-  });
+  const allQs = qRes.rows as Array<{
+    id: string; questionText: string; questionType: string;
+    options: string[] | null; correctAnswer: string;
+    points: number; difficulty: string; explanation: string | null;
+  }>;
 
-  return { attempt: rows[0], questions, timeLimitMinutes: quiz.time_limit_minutes };
+  const selected = pickRandomIds(
+    allQs.map((q) => q.id),
+    Math.min(quiz.questionsPerAttempt, allQs.length),
+    quiz.randomizeQuestions,
+  );
+  const selectedQs = selected.map((sid) => allQs.find((q) => q.id === sid)!);
+
+  const { rows: attemptRows } = await db.query(
+    `INSERT INTO quiz_attempts (quiz_id, student_id, attempt_number)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [quizId, studentId, attemptNumber],
+  );
+  const attemptId = attemptRows[0].id as string;
+
+  const questions = selectedQs.map((q) => ({
+    id:           q.id,
+    questionText: q.questionText,
+    questionType: q.questionType,
+    points:       q.points,
+    difficulty:   q.difficulty,
+    options: quiz.randomizeOptions && q.options
+      ? shuffleMcqOptions(q.options as string[])
+      : q.options,
+  }));
+
+  return {
+    attemptId,
+    attemptNumber,
+    timeLimitMinutes: quiz.timeLimitMinutes,
+    passingScore:     quiz.passingScore,
+    questions,
+  };
 }
 
-export async function submitAttempt(attemptId: string, answers: { questionId: string; selectedAnswer: string }[]) {
-  const attRes = await db.query(
-    `SELECT a.*, q.passing_score, q.module_id
+export async function submitAttempt(
+  attemptId: string,
+  answers: { questionId: string; selectedAnswer: string }[],
+) {
+  const attemptRes = await db.query(
+    `SELECT a.id, a.quiz_id AS "quizId", q.passing_score AS "passingScore"
      FROM quiz_attempts a
      JOIN quizzes q ON q.id = a.quiz_id
-     WHERE a.id = $1`,
+     WHERE a.id = $1 AND a.status = 'IN_PROGRESS'`,
     [attemptId],
   );
-  if (!attRes.rows.length) throw new AppError('Attempt not found', 404, 'NOT_FOUND');
-  const att = attRes.rows[0] as Record<string, unknown>;
-  if (att.status !== 'IN_PROGRESS') throw new AppError('Attempt already submitted', 400, 'ALREADY_SUBMITTED');
+  if (!attemptRes.rows.length) {
+    throw new AppError('Attempt not found or already submitted', 404, 'NOT_FOUND');
+  }
+  const attempt = attemptRes.rows[0] as { id: string; quizId: string; passingScore: number };
 
-  const questionIds = att.question_ids as string[];
-  const poolRes = await db.query(
-    `SELECT id, correct_answer, points, question_type FROM quiz_questions WHERE id = ANY($1::uuid[])`,
-    [questionIds],
-  );
-  const poolMap = new Map(poolRes.rows.map((r) => [r.id as string, r]));
+  let totalPoints = 0;
+  let earnedPoints = 0;
 
-  let earned = 0;
-  let total = 0;
-
-  await db.transaction(async (tx) => {
-    for (const ans of answers) {
-      const q = poolMap.get(ans.questionId);
-      if (!q) continue;
-      total += q.points as number;
-      const isCorrect = String(ans.selectedAnswer).trim().toLowerCase() ===
-        String(q.correct_answer).trim().toLowerCase();
-      const pts = isCorrect ? (q.points as number) : 0;
-      earned += pts;
-      await db.query(
-        `INSERT INTO quiz_attempt_answers (attempt_id, question_id, selected_answer, is_correct, points_earned)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (attempt_id, question_id) DO UPDATE SET selected_answer = $3, is_correct = $4, points_earned = $5`,
-        [attemptId, ans.questionId, ans.selectedAnswer, isCorrect, pts],
-        tx,
-      );
-    }
-    const score = total > 0 ? Math.round((earned / total) * 100) : 0;
-    await db.query(
-      `UPDATE quiz_attempts SET status = 'SUBMITTED', submitted_at = NOW(),
-              score = $2, total_points = $3, earned_points = $4
-       WHERE id = $1`,
-      [attemptId, score, total, earned],
-      tx,
+  for (const ans of answers) {
+    const qRes = await db.query(
+      'SELECT correct_answer AS "correctAnswer", points FROM quiz_questions WHERE id = $1',
+      [ans.questionId],
     );
-  });
+    if (!qRes.rows.length) continue;
+    const q = qRes.rows[0] as { correctAnswer: string; points: number };
+    const correct = ans.selectedAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+    const awarded = correct ? q.points : 0;
+    totalPoints  += q.points;
+    earnedPoints += awarded;
 
-  const score = total > 0 ? Math.round((earned / total) * 100) : 0;
-  return { score, earnedPoints: earned, totalPoints: total, passed: score >= (att.passing_score as number) };
+    await db.query(
+      `INSERT INTO quiz_attempt_answers
+         (attempt_id, question_id, selected_answer, is_correct, points_awarded)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [attemptId, ans.questionId, ans.selectedAnswer, correct, awarded],
+    );
+  }
+
+  const score  = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
+  const passed = score >= attempt.passingScore;
+
+  await db.query(
+    `UPDATE quiz_attempts
+     SET score = $2, passed = $3, status = 'SUBMITTED', submitted_at = NOW()
+     WHERE id = $1`,
+    [attemptId, score, passed],
+  );
+
+  return { attemptId, score, passed, earnedPoints, totalPoints };
 }
 
 export async function listAttempts(quizId?: string) {
   const params: unknown[] = [];
-  let where = '';
-  if (quizId) { where = 'WHERE a.quiz_id = $1'; params.push(quizId); }
+  const where = quizId ? 'WHERE a.quiz_id = $1' : '';
+  if (quizId) params.push(quizId);
   const { rows } = await db.query(
     `SELECT a.id, a.quiz_id AS "quizId", q.title AS "quizTitle",
-            u.name AS "studentName", a.attempt_number AS "attemptNumber",
-            a.score, a.status, a.started_at AS "startedAt", a.submitted_at AS "submittedAt",
-            jsonb_array_length(a.question_ids) AS "questionCount"
+            a.student_id AS "studentId", u.name AS "studentName",
+            a.attempt_number AS "attemptNumber", a.score, a.passed,
+            a.status, a.started_at AS "startedAt", a.submitted_at AS "submittedAt"
      FROM quiz_attempts a
      JOIN quizzes q ON q.id = a.quiz_id
      JOIN users u ON u.id = a.student_id
      ${where}
-     ORDER BY a.submitted_at DESC NULLS LAST`,
+     ORDER BY a.started_at DESC`,
     params,
   );
   return rows;
 }
 
+// ── Preview (trainer view) ────────────────────────────────────────────────────
 export async function previewRandomDraw(quizId: string) {
-  const quizRes = await db.query('SELECT * FROM quizzes WHERE id = $1', [quizId]);
+  const quizRes = await db.query(
+    `SELECT q.id, q.title AS "quizTitle", q.description,
+            q.questions_per_attempt AS "questionsPerAttempt",
+            q.passing_score AS "passingScore",
+            q.time_limit_minutes AS "timeLimitMinutes",
+            q.randomize_questions AS "randomizeQuestions",
+            q.randomize_options AS "randomizeOptions"
+     FROM quizzes q WHERE q.id = $1`,
+    [quizId],
+  );
   if (!quizRes.rows.length) throw new AppError('Quiz not found', 404, 'NOT_FOUND');
-  const quiz = quizRes.rows[0] as Record<string, unknown>;
-  const poolRes = await db.query('SELECT id, question_text FROM quiz_questions WHERE module_id = $1', [quiz.module_id]);
-  const pool = poolRes.rows as { id: string; question_text: string }[];
-  const perAttempt = Math.min(quiz.questions_per_attempt as number, pool.length);
-  const draws = Array.from({ length: 3 }, (_, i) => {
-    const selectedIds = pickRandomIds(pool.map((q) => q.id), perAttempt);
-    return {
-      studentLabel: `Student ${i + 1}`,
-      questionIds: selectedIds,
-      questions: selectedIds.map((id) => {
-        const q = pool.find((p) => p.id === id)!;
-        return { id, text: q.question_text };
-      }),
-    };
+  const quiz = quizRes.rows[0] as {
+    id: string; quizTitle: string; description: string | null;
+    questionsPerAttempt: number; passingScore: number;
+    timeLimitMinutes: number | null;
+    randomizeQuestions: boolean; randomizeOptions: boolean;
+  };
+
+  const qRes = await db.query(
+    `SELECT id, question_text AS "questionText", question_type AS "questionType",
+            options, correct_answer AS "correctAnswer", explanation,
+            points, difficulty
+     FROM quiz_questions
+     WHERE module_id = (SELECT module_id FROM quizzes WHERE id = $1)`,
+    [quizId],
+  );
+
+  type QuestionRow = {
+    id: string; questionText: string; questionType: string;
+    options: string[] | null; correctAnswer: string;
+    explanation: string | null; points: number; difficulty: string;
+  };
+  const allQs = qRes.rows as QuestionRow[];
+  const poolSize = allQs.length;
+  const drawCount = Math.min(quiz.questionsPerAttempt, poolSize);
+
+  const draws = [1, 2, 3].map((n) => {
+    const ids = pickRandomIds(allQs.map((q) => q.id), drawCount, quiz.randomizeQuestions);
+    const questions = ids.map((id) => {
+      const q = allQs.find((qq) => qq.id === id)!;
+      const opts = quiz.randomizeOptions && q.options
+        ? shuffle([...q.options])
+        : q.options;
+      return {
+        id: q.id, text: q.questionText, type: q.questionType,
+        options: opts, correctAnswer: q.correctAnswer,
+        explanation: q.explanation, points: q.points, difficulty: q.difficulty,
+      };
+    });
+    return { studentLabel: `Student ${n}`, questions };
   });
-  return { poolSize: pool.length, questionsPerAttempt: perAttempt, draws };
+
+  return {
+    quizTitle: quiz.quizTitle, description: quiz.description,
+    poolSize, questionsPerAttempt: quiz.questionsPerAttempt,
+    passingScore: quiz.passingScore, timeLimitMinutes: quiz.timeLimitMinutes,
+    draws,
+  };
+}
+
+// ── CSV Import ────────────────────────────────────────────────────────────────
+export interface CsvImportSettings {
+  title: string;
+  questionsPerAttempt: number;
+  timeLimitMinutes: number | null;
+  passingScore: number;
+  maxAttempts: number;
+  status: string;
+}
+
+export async function importQuizFromCsv(
+  courseId: string,
+  moduleId: string,
+  createdBy: string,
+  file: { buffer: Buffer; originalname: string; mimetype: string },
+  userSettings?: Partial<CsvImportSettings>
+) {
+  const mod = await db.query(
+    'SELECT id FROM course_modules WHERE id = $1 AND course_id = $2',
+    [moduleId, courseId],
+  );
+  if (!mod.rows.length) throw new AppError('Module not found', 404, 'NOT_FOUND');
+
+  const csvText = file.buffer.toString('utf-8');
+  const lines   = csvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) {
+    throw new AppError('CSV must have a header row and at least one question', 400, 'INVALID_CSV');
+  }
+
+  const header = parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+  const col = (name: string) => {
+    const idx = header.indexOf(name);
+    if (idx === -1) throw new AppError(`CSV missing required column: "${name}"`, 400, 'INVALID_CSV');
+    return idx;
+  };
+
+  const qCol   = col('question');
+  const aCol   = col('optiona');
+  const bCol   = col('optionb');
+  const cCol   = col('optionc');
+  const dCol   = col('optiond');
+  const ansCol = col('correct_answer');
+  const ptCol  = header.indexOf('points');
+
+  interface ParsedQuestion {
+    questionText: string;
+    options: string[];
+    correctAnswer: string;
+    points: number;
+  }
+  const parsed: ParsedQuestion[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    const questionText = (cols[qCol] ?? '').trim();
+    if (!questionText) continue;
+    const options = [
+      (cols[aCol] ?? '').trim(),
+      (cols[bCol] ?? '').trim(),
+      (cols[cCol] ?? '').trim(),
+      (cols[dCol] ?? '').trim(),
+    ].filter(Boolean);
+    const correctAnswer = (cols[ansCol] ?? '').trim();
+    const points        = ptCol >= 0 ? parseInt(cols[ptCol] ?? '1', 10) || 1 : 1;
+    if (options.length < 2 || !correctAnswer) continue;
+    parsed.push({ questionText, options, correctAnswer, points });
+  }
+
+  if (!parsed.length) throw new AppError('No valid questions found in CSV', 400, 'INVALID_CSV');
+
+  const settings: CsvImportSettings = {
+    title:               userSettings?.title ?? '',
+    questionsPerAttempt: userSettings?.questionsPerAttempt ?? Math.min(10, parsed.length),
+    timeLimitMinutes:    userSettings?.timeLimitMinutes ?? null,
+    passingScore:        userSettings?.passingScore ?? 70,
+    maxAttempts:         userSettings?.maxAttempts ?? 3,
+    status:              userSettings?.status ?? 'DRAFT',
+  };
+
+  // Auto-number: always name by sequence per course
+  const quizTitle = await nextQuizTitle(courseId);
+
+  const existing = await db.query('SELECT id FROM quizzes WHERE module_id = $1', [moduleId]);
+  let quizId: string;
+
+  if (existing.rowCount && existing.rowCount > 0) {
+    const upd = await db.query(
+      `UPDATE quizzes
+       SET title = $2, questions_per_attempt = $3, time_limit_minutes = $4,
+           passing_score = $5, max_attempts = $6, status = $7
+       WHERE module_id = $1
+       RETURNING id`,
+      [moduleId, quizTitle, settings.questionsPerAttempt, settings.timeLimitMinutes,
+       settings.passingScore, settings.maxAttempts, settings.status],
+    );
+    quizId = upd.rows[0].id as string;
+    await db.query('DELETE FROM quiz_questions WHERE module_id = $1', [moduleId]);
+  } else {
+    const ins = await db.query(
+      `INSERT INTO quizzes
+         (course_id, module_id, title, questions_per_attempt, time_limit_minutes,
+          passing_score, randomize_questions, randomize_options, max_attempts, status, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,true,true,$7,$8,$9)
+       RETURNING id`,
+      [courseId, moduleId, quizTitle, settings.questionsPerAttempt,
+       settings.timeLimitMinutes, settings.passingScore,
+       settings.maxAttempts, settings.status, createdBy],
+    );
+    quizId = ins.rows[0].id as string;
+  }
+
+  for (const q of parsed) {
+    await db.query(
+      `INSERT INTO quiz_questions
+         (course_id, module_id, question_text, question_type,
+          options, correct_answer, points, difficulty)
+       VALUES ($1,$2,$3,'MCQ',$4,$5,$6,'MEDIUM')`,
+      [courseId, moduleId, q.questionText,
+       JSON.stringify(q.options), q.correctAnswer, q.points],
+    );
+  }
+
+  const quiz = await db.query(
+    `SELECT q.id, q.title, q.status,
+            q.questions_per_attempt AS "questionsPerAttempt",
+            q.time_limit_minutes AS "timeLimitMinutes",
+            q.passing_score AS "passingScore",
+            q.max_attempts AS "maxAttempts",
+            m.title AS "moduleTitle"
+     FROM quizzes q
+     JOIN course_modules m ON m.id = q.module_id
+     WHERE q.id = $1`,
+    [quizId],
+  );
+
+  return {
+    quizId,
+    title:             quiz.rows[0]?.title ?? '',
+    questionsImported: parsed.length,
+    moduleTitle:       quiz.rows[0]?.moduleTitle ?? '',
+  };
 }

@@ -89,7 +89,7 @@ export async function getBatch(id: string) {
   };
 }
 
-// ── Archive batch (soft-delete → status=COMPLETED) ──────────────────────────
+// ── Archive batch (soft-delete → status=COMPLETED) ───────────────────────────
 export async function archiveBatch(id: string, trainerId?: string) {
   const checkSql = trainerId
     ? `SELECT b.id FROM batches b JOIN courses c ON c.id = b.course_id WHERE b.id = $1 AND c.trainer_id = $2`
@@ -99,6 +99,16 @@ export async function archiveBatch(id: string, trainerId?: string) {
     throw new AppError('Batch not found', 404, 'NOT_FOUND');
   }
   await db.query(`UPDATE batches SET status = 'COMPLETED' WHERE id = $1`, [id]);
+  return getBatch(id);
+}
+
+// ── Restore batch (COMPLETED → UPCOMING) ─────────────────────────────────────
+export async function restoreBatch(id: string) {
+  const existing = await db.query(`SELECT id FROM batches WHERE id = $1`, [id]);
+  if (!existing.rowCount || existing.rowCount === 0) {
+    throw new AppError('Batch not found', 404, 'NOT_FOUND');
+  }
+  await db.query(`UPDATE batches SET status = 'UPCOMING', updated_at = NOW() WHERE id = $1`, [id]);
   return getBatch(id);
 }
 
@@ -205,7 +215,6 @@ export async function getAvailableStudents(batchId: string) {
 
 // ── Enroll student ────────────────────────────────────────────────────────────
 export async function enrollStudent(batchId: string, studentId: string) {
-  // Check batch exists and has capacity
   const batchRes = await db.query(
     `SELECT b.id, b.capacity,
        (SELECT COUNT(*) FROM enrollments WHERE batch_id = b.id)::int AS enrolled
@@ -220,7 +229,6 @@ export async function enrollStudent(batchId: string, studentId: string) {
     throw new AppError('Batch is at full capacity', 400, 'BATCH_FULL');
   }
 
-  // Check student exists
   const studentRes = await db.query('SELECT id FROM users WHERE id = $1 AND role = $2', [studentId, 'STUDENT']);
   if (!studentRes.rowCount || studentRes.rowCount === 0) {
     throw new AppError('Student not found', 404, 'NOT_FOUND');
@@ -231,8 +239,8 @@ export async function enrollStudent(batchId: string, studentId: string) {
       `INSERT INTO enrollments (student_id, batch_id) VALUES ($1, $2)`,
       [studentId, batchId],
     );
-  } catch (e: any) {
-    if (e.code === '23505') throw new AppError('Student already enrolled in this batch', 409, 'DUPLICATE');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === '23505') throw new AppError('Student already enrolled in this batch', 409, 'DUPLICATE');
     throw e;
   }
 
@@ -274,14 +282,17 @@ export async function updateEnrollment(enrollmentId: string, completionPct: numb
 // ── Batch analytics ───────────────────────────────────────────────────────────
 export async function getBatchAnalytics(batchId: string) {
   const batchRes = await db.query(
-    `SELECT b.id, b.capacity,
+    `SELECT b.id, b.name, b.capacity, b.status,
+       b.start_date AS "startDate", b.end_date AS "endDate",
+       c.title AS course_title,
        COUNT(e.id)::int                                     AS total_enrolled,
        COALESCE(ROUND(AVG(e.completion_pct))::int, 0)      AS avg_completion,
        COUNT(CASE WHEN e.completion_pct = 100 THEN 1 END)::int AS completed_100
      FROM batches b
+     JOIN courses c ON c.id = b.course_id
      LEFT JOIN enrollments e ON e.batch_id = b.id
      WHERE b.id = $1
-     GROUP BY b.id`,
+     GROUP BY b.id, c.title`,
     [batchId],
   );
   if (!batchRes.rowCount || batchRes.rowCount === 0) {
@@ -289,9 +300,9 @@ export async function getBatchAnalytics(batchId: string) {
   }
   const row = batchRes.rows[0];
 
-  // Per-student breakdown
   const studentsRes = await db.query(
-    `SELECT u.name AS student_name, e.completion_pct AS "completionPct", e.grade
+    `SELECT u.name AS student_name, e.completion_pct AS "completionPct", e.grade,
+            e.enrolled_at AS "enrolledAt"
      FROM enrollments e
      JOIN users u ON u.id = e.student_id
      WHERE e.batch_id = $1
@@ -299,13 +310,12 @@ export async function getBatchAnalytics(batchId: string) {
     [batchId],
   );
 
-  // Completion buckets: 0-20, 21-40, 41-60, 61-80, 81-100
   const buckets = [
-    { range: '0–20%',   min: 0,  max: 20,  count: 0 },
-    { range: '21–40%',  min: 21, max: 40,  count: 0 },
-    { range: '41–60%',  min: 41, max: 60,  count: 0 },
-    { range: '61–80%',  min: 61, max: 80,  count: 0 },
-    { range: '81–100%', min: 81, max: 100, count: 0 },
+    { range: '0-20%',   min: 0,  max: 20,  count: 0 },
+    { range: '21-40%',  min: 21, max: 40,  count: 0 },
+    { range: '41-60%',  min: 41, max: 60,  count: 0 },
+    { range: '61-80%',  min: 61, max: 80,  count: 0 },
+    { range: '81-100%', min: 81, max: 100, count: 0 },
   ];
   for (const s of studentsRes.rows) {
     const pct = s.completionPct ?? 0;
@@ -314,15 +324,25 @@ export async function getBatchAnalytics(batchId: string) {
   }
 
   return {
-    totalEnrolled:      row.total_enrolled,
-    capacity:           row.capacity,
-    avgCompletion:      row.avg_completion,
-    completed100:       row.completed_100,
-    completionBuckets:  buckets.map(({ range, count }) => ({ range, count })),
-    students:           studentsRes.rows.map((s) => ({
+    batch: {
+      id:          row.id,
+      name:        row.name,
+      capacity:    row.capacity,
+      status:      row.status,
+      startDate:   row.startDate,
+      endDate:     row.endDate,
+      courseTitle: row.course_title,
+    },
+    totalEnrolled:     row.total_enrolled,
+    capacity:          row.capacity,
+    avgCompletion:     row.avg_completion,
+    completed100:      row.completed_100,
+    completionBuckets: buckets.map(({ range, count }) => ({ range, count })),
+    students:          studentsRes.rows.map((s) => ({
       studentName:   s.student_name,
       completionPct: s.completionPct,
       grade:         s.grade ?? null,
+      enrolledAt:    s.enrolledAt,
     })),
   };
 }

@@ -1,6 +1,12 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, MutationCache } from '@tanstack/react-query';
 
 export const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onSuccess: () => {
+      // Dynamically reflect changes in the dashboard
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes

@@ -31,6 +31,9 @@ const adminRoles = requireRole('SUPER_ADMIN', 'ADMIN', 'TRAINER');
 
 router.use(authenticate);
 
+// CSV Import
+router.post('/csv-import', adminRoles, handleUpload('file'), ctrl.importCsv);
+
 // Dashboard
 router.get('/dashboard', adminRoles, ctrl.dashboard);
 

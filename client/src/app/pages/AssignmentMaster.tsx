@@ -342,7 +342,7 @@ function CreateAssignmentForm({ courses, onSuccess }: { courses: Course[]; onSuc
     setLoading(true);
     try {
       const fd = new FormData();
-      fd.append('pdf', pdf);
+      fd.append('file', pdf);
       fd.append('courseId', courseId);
       fd.append('title', title);
       fd.append('description', description);

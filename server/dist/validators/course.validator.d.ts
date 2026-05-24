@@ -9,10 +9,10 @@ export declare const createCourseSchema: z.ZodObject<{
     trainerId: z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodEffects<z.ZodLiteral<"">, null, "">]>;
     colorToken: z.ZodDefault<z.ZodEnum<["emerald", "cyan", "purple", "amber", "rose", "indigo", "sky", "orange"]>>;
 }, "strip", z.ZodTypeAny, {
+    status: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED";
     title: string;
     category: string;
-    status: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED";
-    level: "INTERMEDIATE" | "BEGINNER" | "ADVANCED";
+    level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
     durationMonths: number;
     colorToken: "emerald" | "cyan" | "purple" | "amber" | "rose" | "indigo" | "sky" | "orange";
     description?: string | undefined;
@@ -21,9 +21,9 @@ export declare const createCourseSchema: z.ZodObject<{
     title: string;
     category: string;
     durationMonths: number;
-    description?: string | undefined;
     status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
-    level?: "INTERMEDIATE" | "BEGINNER" | "ADVANCED" | undefined;
+    level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined;
+    description?: string | undefined;
     trainerId?: string | null | undefined;
     colorToken?: "emerald" | "cyan" | "purple" | "amber" | "rose" | "indigo" | "sky" | "orange" | undefined;
 }>;
@@ -37,21 +37,21 @@ export declare const updateCourseSchema: z.ZodObject<{
     trainerId: z.ZodOptional<z.ZodUnion<[z.ZodNullable<z.ZodOptional<z.ZodString>>, z.ZodEffects<z.ZodLiteral<"">, null, "">]>>;
     colorToken: z.ZodOptional<z.ZodDefault<z.ZodEnum<["emerald", "cyan", "purple", "amber", "rose", "indigo", "sky", "orange"]>>>;
 }, "strip", z.ZodTypeAny, {
-    description?: string | undefined;
+    status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
     title?: string | undefined;
     category?: string | undefined;
-    status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
-    level?: "INTERMEDIATE" | "BEGINNER" | "ADVANCED" | undefined;
+    level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined;
     durationMonths?: number | undefined;
+    description?: string | undefined;
     trainerId?: string | null | undefined;
     colorToken?: "emerald" | "cyan" | "purple" | "amber" | "rose" | "indigo" | "sky" | "orange" | undefined;
 }, {
-    description?: string | undefined;
+    status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
     title?: string | undefined;
     category?: string | undefined;
-    status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
-    level?: "INTERMEDIATE" | "BEGINNER" | "ADVANCED" | undefined;
+    level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined;
     durationMonths?: number | undefined;
+    description?: string | undefined;
     trainerId?: string | null | undefined;
     colorToken?: "emerald" | "cyan" | "purple" | "amber" | "rose" | "indigo" | "sky" | "orange" | undefined;
 }>;
@@ -63,19 +63,19 @@ export declare const courseQuerySchema: z.ZodObject<{
     page: z.ZodDefault<z.ZodNumber>;
     limit: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    limit: number;
     page: number;
-    search?: string | undefined;
-    category?: string | undefined;
+    limit: number;
     status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
-    level?: "INTERMEDIATE" | "BEGINNER" | "ADVANCED" | undefined;
+    category?: string | undefined;
+    level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined;
+    search?: string | undefined;
 }, {
-    search?: string | undefined;
-    category?: string | undefined;
     status?: "ACTIVE" | "NEW" | "DRAFT" | "ARCHIVED" | undefined;
-    level?: "INTERMEDIATE" | "BEGINNER" | "ADVANCED" | undefined;
-    limit?: number | undefined;
+    category?: string | undefined;
+    level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined;
+    search?: string | undefined;
     page?: number | undefined;
+    limit?: number | undefined;
 }>;
 export type CreateCourseInput = z.infer<typeof createCourseSchema>;
 export type UpdateCourseInput = z.infer<typeof updateCourseSchema>;

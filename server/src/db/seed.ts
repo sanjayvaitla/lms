@@ -281,6 +281,33 @@ async function main() {
 
   console.log('\u2705 4 Modules, 9 questions, 4 quizzes (Module 1 quiz released)');
 
+  // ── Assignments ───────────────────────────────────────────────────────────────
+  const assignmentsData = [
+    { title: 'Build a Portfolio Website', maxScore: 100, dueDate: new Date(Date.now() + 7 * 86400000).toISOString() },
+    { title: 'React Hooks Implementation', maxScore: 50, dueDate: new Date(Date.now() + 14 * 86400000).toISOString() },
+  ];
+
+  for (let i = 0; i < assignmentsData.length; i++) {
+    const a = assignmentsData[i];
+    const res = await q(
+      `INSERT INTO assignments (course_id, module_id, title, max_score, status, due_date, pdf_filename, pdf_path, pdf_size_bytes)
+       VALUES ($1,$2,$3,$4,'PUBLISHED',$5, 'demo.pdf', 'assignments/demo.pdf', 1024) RETURNING id`,
+      [mernCourseId, moduleIds[i], a.title, a.maxScore, a.dueDate],
+    );
+    const assignId = res.rows[0].id as string;
+
+    // Map assignment to the first 2 batches of this course
+    const courseBatches = batchIds.slice(0, 2); // MERN batches
+    for (const bId of courseBatches) {
+      await q(
+        `INSERT INTO assignment_batches (assignment_id, batch_id) VALUES ($1,$2)
+         ON CONFLICT DO NOTHING`,
+        [assignId, bId],
+      );
+    }
+  }
+  console.log('\u2705 2 Assignments seeded and mapped to batches');
+
   console.log(`
 \u2728 Seed complete!
 

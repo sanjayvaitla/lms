@@ -68,6 +68,32 @@ export declare function archiveBatch(id: string, trainerId?: string): Promise<{
         };
     }[];
 }>;
+export declare function restoreBatch(id: string): Promise<{
+    id: any;
+    name: any;
+    courseId: any;
+    course: {
+        id: any;
+        title: any;
+        category: any;
+    };
+    startDate: any;
+    endDate: any;
+    capacity: any;
+    status: any;
+    createdAt: any;
+    enrollments: {
+        id: any;
+        completionPct: any;
+        grade: any;
+        enrolledAt: any;
+        student: {
+            id: any;
+            name: any;
+            email: any;
+        };
+    }[];
+}>;
 export declare function createBatch(input: {
     name: string;
     courseId: string;
@@ -165,6 +191,15 @@ export declare function enrollStudent(batchId: string, studentId: string): Promi
 export declare function unenrollStudent(batchId: string, studentId: string): Promise<void>;
 export declare function updateEnrollment(enrollmentId: string, completionPct: number, grade?: string): Promise<void>;
 export declare function getBatchAnalytics(batchId: string): Promise<{
+    batch: {
+        id: any;
+        name: any;
+        capacity: any;
+        status: any;
+        startDate: any;
+        endDate: any;
+        courseTitle: any;
+    };
     totalEnrolled: any;
     capacity: any;
     avgCompletion: any;
@@ -177,6 +212,7 @@ export declare function getBatchAnalytics(batchId: string): Promise<{
         studentName: any;
         completionPct: any;
         grade: any;
+        enrolledAt: any;
     }[];
 }>;
 //# sourceMappingURL=batches.service.d.ts.map

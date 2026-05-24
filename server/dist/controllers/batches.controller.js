@@ -38,6 +38,7 @@ exports.getById = getById;
 exports.create = create;
 exports.update = update;
 exports.archive = archive;
+exports.restore = restore;
 exports.remove = remove;
 exports.enroll = enroll;
 exports.unenroll = unenroll;
@@ -79,6 +80,12 @@ async function archive(req, res) {
     const batch = await svc.archiveBatch(String(req.params.id), trainerId);
     res.json({ success: true, data: batch });
 }
+async function restore(req, res) {
+    if (isTrainer(req))
+        throw new error_middleware_1.AppError('Trainers cannot restore batches', 403, 'FORBIDDEN');
+    const batch = await svc.restoreBatch(String(req.params.id));
+    res.json({ success: true, data: batch });
+}
 async function remove(req, res) {
     if (isTrainer(req))
         throw new error_middleware_1.AppError('Trainers cannot permanently delete batches', 403, 'FORBIDDEN');
@@ -93,20 +100,20 @@ async function enroll(req, res) {
     res.status(201).json({ success: true, data: batch });
 }
 async function unenroll(req, res) {
-    const batch = await svc.unenrollStudent(String(req.params.id), String(req.params.studentId));
-    res.json({ success: true, data: batch });
+    await svc.unenrollStudent(String(req.params.id), String(req.params.studentId));
+    res.json({ success: true, message: 'Student unenrolled' });
 }
 async function updateEnrollment(req, res) {
     const { completionPct, grade } = req.body;
-    const result = await svc.updateEnrollment(String(req.params.enrollmentId), completionPct, grade);
-    res.json({ success: true, data: result });
+    await svc.updateEnrollment(String(req.params.enrollmentId), completionPct, grade);
+    res.json({ success: true, message: 'Enrollment updated' });
 }
 async function availableStudents(req, res) {
     const students = await svc.getAvailableStudents(String(req.params.id));
     res.json({ success: true, data: students });
 }
 async function analytics(req, res) {
-    const data = await svc.getBatchAnalytics(String(req.params.id));
-    res.json({ success: true, data });
+    const result = await svc.getBatchAnalytics(String(req.params.id));
+    res.json({ success: true, data: result });
 }
 //# sourceMappingURL=batches.controller.js.map

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -871,132 +871,280 @@ function TrainerSelectField({ register, defaultValue }: {
 // -- Syllabus Tab --
 function SyllabusTab({ courseId }: { courseId: string }) {
   const qc = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver]   = useState(false);
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading]       = useState(false);
+  const [dragOver, setDragOver]         = useState(false);
+  const [labelInput, setLabelInput]     = useState('');
+  const [showUpload, setShowUpload]     = useState(false);
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [activeSheet, setActiveSheet]   = useState(0);
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
 
-  const { data: syllabus, isLoading } = useQuery<SyllabusContent | null>({
-    queryKey: ["syllabus", courseId],
-    queryFn:  async () => {
+  const { data: syllabi = [], isLoading } = useQuery<SyllabusContent[]>({
+    queryKey: ['syllabi', courseId],
+    queryFn: async () => {
       const { data } = await api.get(`/courses/${courseId}/syllabus`);
-      return data.data ?? null;
+      return data.data ?? [];
     },
   });
 
+  // Auto-select latest when list loads
+  React.useEffect(() => {
+    if (syllabi.length && !selectedId) setSelectedId(syllabi[0].id);
+  }, [syllabi, selectedId]);
+
+  const selected = syllabi.find(s => s.id === selectedId) ?? syllabi[0] ?? null;
+
   async function handleUpload(file: File) {
-    const allowed = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-    ];
-    const nameOk = file.name.endsWith(".pdf") || file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
-    if (!allowed.includes(file.type) && !nameOk) {
-      toast.error("Only PDF and Excel files allowed");
-      return;
-    }
+    const nameOk = /\.(pdf|xlsx|xls|csv)$/i.test(file.name);
+    if (!nameOk) { toast.error('Only PDF, Excel (.xlsx/.xls), or CSV allowed'); return; }
     setUploading(true);
     try {
       const form = new FormData();
-      form.append("syllabus", file);
-      // Do NOT set Content-Type manually — axios auto-adds multipart boundary
-      await api.post(`/courses/${courseId}/syllabus`, form);
-      toast.success("Syllabus uploaded and extracted!");
-      qc.invalidateQueries({ queryKey: ["syllabus", courseId] });
+      form.append('syllabus', file);
+      if (labelInput.trim()) form.append('label', labelInput.trim());
+      const { data } = await api.post(`/courses/${courseId}/syllabus`, form);
+      toast.success('Syllabus uploaded!');
+      qc.invalidateQueries({ queryKey: ['syllabi', courseId] });
+      setSelectedId(data.data.id);
+      setActiveSheet(0);
+      setExpandedSessions(new Set());
+      setLabelInput('');
+      setShowUpload(false);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message ?? "Upload failed");
+      toast.error(e?.response?.data?.message ?? 'Upload failed');
     } finally {
       setUploading(false);
     }
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this syllabus version?')) return;
+    try {
+      await api.delete(`/courses/${courseId}/syllabus/${id}`);
+      toast.success('Deleted');
+      qc.invalidateQueries({ queryKey: ['syllabi', courseId] });
+      if (selectedId === id) setSelectedId(syllabi.find(s => s.id !== id)?.id ?? null);
+    } catch { toast.error('Delete failed'); }
+  }
+
+  function toggleSession(key: string) {
+    setExpandedSessions(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  }
+
   if (isLoading) return (
-    <div className="space-y-3">
-      <Skeleton className="h-32 rounded-xl" />
-      <Skeleton className="h-4 rounded" />
-    </div>
+    <div className="space-y-3"><Skeleton className="h-32 rounded-xl" /><Skeleton className="h-4 rounded" /><Skeleton className="h-4 w-3/4 rounded" /></div>
   );
+
+  const sheetColors = ['from-blue-500 to-cyan-500','from-purple-500 to-pink-500','from-emerald-500 to-teal-500','from-orange-500 to-amber-500','from-rose-500 to-red-500'];
+  const sheetBg     = ['bg-blue-50 border-blue-200 text-blue-700','bg-purple-50 border-purple-200 text-purple-700','bg-emerald-50 border-emerald-200 text-emerald-700','bg-orange-50 border-orange-200 text-orange-700','bg-rose-50 border-rose-200 text-rose-700'];
+
+  const structured   = selected?.structuredData;
+  const currentSheet = structured?.sheets[activeSheet];
+  const totalDuration = currentSheet?.sessions.reduce((a, s) => a + (s.duration ?? 0), 0) ?? 0;
 
   return (
     <div className="space-y-4">
-      {/* Upload zone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          const file = e.dataTransfer.files[0];
-          if (file) handleUpload(file);
-        }}
-        onClick={() => fileRef.current?.click()}
-        className={`relative cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
-          dragOver ? "border-cyan-400 bg-cyan-50" : "border-gray-200 hover:border-cyan-300 hover:bg-gray-50"
-        }`}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".pdf,.xlsx,.xls"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }}
-        />
-        {uploading ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
-            <p className="text-sm text-gray-600">Extracting text from file...</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex gap-3">
-              <FileText className="w-6 h-6 text-red-400" />
-              <FileSpreadsheet className="w-6 h-6 text-green-500" />
-            </div>
-            <p className="text-sm font-medium text-gray-700">
-              {syllabus ? "Replace syllabus" : "Upload syllabus"}
-            </p>
-            <p className="text-xs text-gray-400">Drag and drop or click -- PDF, XLSX, XLS (max 20 MB)</p>
-            <div className="flex items-center gap-2 mt-1">
-              <Upload className="w-4 h-4 text-cyan-500" />
-              <span className="text-xs font-medium text-cyan-600">Choose file</span>
-            </div>
-          </div>
-        )}
+
+      {/* Header row — version list + add button */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          {syllabi.length} version{syllabi.length !== 1 ? 's' : ''} uploaded
+        </p>
+        <button onClick={() => setShowUpload(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100 transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Add version
+        </button>
       </div>
 
-      {/* Existing syllabus content */}
-      {syllabus ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
-            {syllabus.fileType === "PDF"
-              ? <FileText className="w-5 h-5 text-red-400 shrink-0" />
-              : <FileSpreadsheet className="w-5 h-5 text-green-500 shrink-0" />
-            }
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-700 truncate">{syllabus.filename}</p>
-              <p className="text-xs text-gray-400">
-                {syllabus.fileType} · Uploaded {new Date(syllabus.createdAt).toLocaleDateString()}
-                {syllabus.uploadedByName && ` by ${syllabus.uploadedByName}`}
-              </p>
-            </div>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-          </div>
-
-          {/* Extracted text */}
-          <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
-            <p className="text-xs font-semibold text-gray-600 mb-2">Extracted Content</p>
-            <div className="max-h-96 overflow-y-auto">
-              <pre className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-sans">
-                {syllabus.contentText}
-              </pre>
-            </div>
+      {/* Upload panel */}
+      {showUpload && (
+        <div className="rounded-xl border border-dashed border-cyan-300 bg-cyan-50/40 p-4 space-y-3">
+          <input
+            type="text" placeholder="Version label (e.g. v2, Jan 2026 Batch)…"
+            value={labelInput} onChange={e => setLabelInput(e.target.value)}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-300"
+          />
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleUpload(f); }}
+            onClick={() => fileRef.current?.click()}
+            className={`cursor-pointer rounded-xl border-2 border-dashed p-5 text-center transition-all ${dragOver ? 'border-cyan-400 bg-cyan-100' : 'border-gray-200 hover:border-cyan-300 hover:bg-gray-50'}`}
+          >
+            <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); }} />
+            {uploading ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="w-7 h-7 text-cyan-500 animate-spin" />
+                <p className="text-sm text-gray-600">Processing…</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex gap-3 items-center">
+                  <FileText className="w-5 h-5 text-red-400" />
+                  <FileSpreadsheet className="w-5 h-5 text-green-500" />
+                  <span className="text-xs text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded">CSV</span>
+                </div>
+                <p className="text-sm font-semibold text-gray-700">Drop file or click to browse</p>
+                <p className="text-xs text-gray-400">PDF · Excel (.xlsx) · CSV</p>
+              </div>
+            )}
           </div>
         </div>
-      ) : (
-        <p className="text-center py-4 text-gray-400 text-xs">
-          No syllabus uploaded yet. Upload a PDF or Excel file above.
-        </p>
+      )}
+
+      {/* Version list */}
+      {syllabi.length > 0 && (
+        <div className="space-y-1.5">
+          {syllabi.map((s, idx) => {
+            const isSelected = s.id === selected?.id;
+            const isLatest   = idx === 0;
+            return (
+              <div key={s.id}
+                onClick={() => { setSelectedId(s.id); setActiveSheet(0); setExpandedSessions(new Set()); }}
+                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  isSelected ? 'border-cyan-300 bg-cyan-50 shadow-sm' : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                }`}>
+                {s.fileType === 'PDF'
+                  ? <FileText className="w-4 h-4 text-red-400 shrink-0" />
+                  : <FileSpreadsheet className="w-4 h-4 text-green-500 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{s.label ?? s.filename}</p>
+                    {isLatest && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold shrink-0">Latest</span>}
+                  </div>
+                  <p className="text-xs text-gray-400 truncate">
+                    {s.filename} · {s.fileType} · {new Date(s.createdAt).toLocaleDateString()}{s.uploadedByName ? ` by ${s.uploadedByName}` : ''}
+                  </p>
+                </div>
+                {isSelected && <div className="w-2 h-2 rounded-full bg-cyan-500 shrink-0" />}
+                <button onClick={e => { e.stopPropagation(); handleDelete(s.id); }}
+                  className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Structured preview for selected version */}
+      {selected && structured && (
+        <div className="space-y-3 pt-1">
+          <div className="h-px bg-gray-100" />
+
+          {/* Sheet tabs */}
+          {structured.sheets.length > 1 && (
+            <div className="flex gap-2 flex-wrap">
+              {structured.sheets.map((sheet, idx) => (
+                <button key={idx}
+                  onClick={() => { setActiveSheet(idx); setExpandedSessions(new Set()); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    activeSheet === idx
+                      ? `bg-gradient-to-r ${sheetColors[idx % sheetColors.length]} text-white border-transparent shadow-sm`
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                  }`}>
+                  {sheet.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {currentSheet && (
+            <div className="space-y-3">
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Sessions', value: currentSheet.sessions.length },
+                  { label: 'Hours',    value: totalDuration ? (totalDuration / 60).toFixed(1) + 'h' : '—' },
+                  { label: 'Topics',   value: currentSheet.sessions.reduce((a, s) => a + s.topics.length, 0) },
+                ].map(stat => (
+                  <div key={stat.label} className={`rounded-xl p-3 border ${sheetBg[activeSheet % sheetBg.length]}`}>
+                    <p className="text-xs font-medium opacity-70">{stat.label}</p>
+                    <p className="text-xl font-bold">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Expand/Collapse */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-gray-800">{currentSheet.courseTitle}</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => setExpandedSessions(new Set(currentSheet.sessions.map(s => String(s.session))))}
+                    className="text-xs text-cyan-600 hover:text-cyan-700 font-medium flex items-center gap-1">
+                    <ChevronDown className="w-3.5 h-3.5" /> Expand all
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button onClick={() => setExpandedSessions(new Set())}
+                    className="text-xs text-gray-500 hover:text-gray-600 font-medium flex items-center gap-1">
+                    <ChevronUp className="w-3.5 h-3.5" /> Collapse all
+                  </button>
+                </div>
+              </div>
+
+              {/* Session cards */}
+              <div className="space-y-2">
+                {currentSheet.sessions.map((sess, sidx) => {
+                  const key = String(sess.session);
+                  const isOpen = expandedSessions.has(key);
+                  const ci = activeSheet % sheetColors.length;
+                  return (
+                    <div key={sidx} className="rounded-xl border border-gray-100 overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
+                      <button onClick={() => toggleSession(key)}
+                        className="w-full flex items-center gap-3 p-3 text-left hover:bg-gray-50 transition-colors">
+                        <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${sheetColors[ci]} flex items-center justify-center shrink-0`}>
+                          <span className="text-white text-xs font-bold">{String(sess.session).length <= 3 ? sess.session : sidx + 1}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{sess.module}</p>
+                          <p className="text-xs text-gray-400">{sess.topics.length} topic{sess.topics.length !== 1 ? 's' : ''}</p>
+                        </div>
+                        {sess.duration && (
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border shrink-0 ${sheetBg[ci]}`}>{sess.duration} min</span>
+                        )}
+                        <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isOpen && sess.topics.length > 0 && (
+                        <div className="px-4 pb-3 pt-0 border-t border-gray-50 bg-gray-50/50">
+                          <ul className="space-y-1.5 mt-2">
+                            {sess.topics.map((topic, tidx) => (
+                              <li key={tidx} className="flex items-start gap-2 text-xs text-gray-700">
+                                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full bg-gradient-to-br ${sheetColors[ci]} shrink-0`} />
+                                <span className="leading-relaxed">{topic}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PDF plain-text fallback */}
+      {selected && !structured && (
+        <div className="space-y-2 pt-1">
+          <div className="h-px bg-gray-100" />
+          <pre className="text-xs text-gray-600 bg-gray-50 rounded-xl p-4 border border-gray-100 whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed font-mono">
+            {selected.contentText}
+          </pre>
+        </div>
+      )}
+
+      {syllabi.length === 0 && !isLoading && (
+        <div className="text-center py-8 text-gray-400">
+          <FileSpreadsheet className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No syllabus uploaded yet.</p>
+          <p className="text-xs mt-1">Click "Add version" to upload a PDF, Excel, or CSV.</p>
+        </div>
       )}
     </div>
   );
+
 }

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 import type { User } from '../types/api';
 import api from '../lib/axios';
 
@@ -8,6 +8,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setAuth: (user: User, token: string) => void;
 }
@@ -55,6 +56,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function register(name: string, email: string, password: string) {
+    setIsLoading(true);
+    try {
+      const { data } = await api.post('/auth/register', { name, email, password, role: 'STUDENT' });
+      const { user: u, accessToken: token, refreshToken } = data.data;
+      localStorage.setItem('lms_refresh_token', refreshToken);
+      setAuth(u, token);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   async function logout() {
     try {
       await api.post('/auth/logout');
@@ -73,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user && !!accessToken,
         isLoading,
         login,
+        register,
         logout,
         setAuth,
       }}

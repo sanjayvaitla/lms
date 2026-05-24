@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   HelpCircle, LayoutDashboard, Layers, Database, BookOpen, ListChecks,
   Plus, Search, Loader2, X, CheckCircle2, Lock, Unlock, Shuffle,
-  PlayCircle, Trash2, Eye, ChevronRight, Upload, FileText,
-  AlertCircle, Clock, Award, BarChart3, Filter,
+  PlayCircle, Trash2, Eye, ChevronRight, Upload, FileText, FileSpreadsheet,
+  AlertCircle, Clock, Award, BarChart3, Filter, Download, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../../lib/axios';
@@ -22,6 +22,7 @@ async function fetchCourses(): Promise<Course[]> {
 export default function QuizMasterPage() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [courseId, setCourseId] = useState('');
+  const [showCsvImportGlobal, setShowCsvImportGlobal] = useState(false);
   const qc = useQueryClient();
 
   const { data: courses = [] } = useQuery({ queryKey: ['courses-quiz'], queryFn: fetchCourses });
@@ -44,17 +45,39 @@ export default function QuizMasterPage() {
             Module-by-module quiz release, randomized questions per learner, and reference datasets.
           </p>
         </div>
-        <select
-          value={courseId}
-          onChange={(e) => setCourseId(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white shadow-sm min-w-[200px]"
-        >
-          <option value="">All courses</option>
-          {courses.map((c) => (
-            <option key={c.id} value={c.id}>{c.title}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowCsvImportGlobal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors"
+          >
+            <FileSpreadsheet className="w-4 h-4" /> Import Quiz CSV
+          </button>
+          <select
+            value={courseId}
+            onChange={(e) => setCourseId(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white shadow-sm min-w-[180px]"
+          >
+            <option value="">All courses</option>
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>{c.title}</option>
+            ))}
+          </select>
+        </div>
       </div>
+
+      {showCsvImportGlobal && (
+        <CsvImportModal
+          courseId={courseId}
+          onClose={() => setShowCsvImportGlobal(false)}
+          onDone={() => {
+            setShowCsvImportGlobal(false);
+            qc.invalidateQueries({ queryKey: ['quizzes-list'] });
+            qc.invalidateQueries({ queryKey: ['quiz-dashboard'] });
+            qc.invalidateQueries({ queryKey: ['questions'] });
+            setTab('quizzes');
+          }}
+        />
+      )}
 
       <div className="flex flex-wrap gap-1 p-1 bg-gray-100 rounded-xl">
         {tabs.map(({ id, label, icon: Icon }) => (
@@ -80,7 +103,7 @@ export default function QuizMasterPage() {
   );
 }
 
-/* ─────────────────────────── Dashboard ──────────────────────────── */
+/* Dashboard ──────────────────────────── */
 
 function QuizDashboardTab() {
   const { data, isLoading } = useQuery({
@@ -162,7 +185,7 @@ function QuizDashboardTab() {
   );
 }
 
-/* ─────────────────────────── Modules ──────────────────────────── */
+/* Modules ──────────────────────────── */
 
 function ModulesTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof useQueryClient> }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -331,7 +354,7 @@ function ModulesTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof 
   );
 }
 
-/* ─────────────────────────── Datasets ──────────────────────────── */
+/* Datasets ──────────────────────────── */
 
 function DatasetsTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof useQueryClient> }) {
   const [showUpload, setShowUpload] = useState(false);
@@ -508,7 +531,7 @@ function parseOptions(options: unknown): string[] {
   return [];
 }
 
-/* ─────────────────────────── Questions ──────────────────────────── */
+/* Questions ──────────────────────────── */
 
 function QuestionsTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof useQueryClient> }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -779,10 +802,11 @@ function AddQuestionModal({ courseId, onClose, onDone }: { courseId: string; onC
   );
 }
 
-/* ─────────────────────────── Quizzes ──────────────────────────── */
+/* Quizzes ──────────────────────────── */
 
 function QuizzesTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof useQueryClient> }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const { data: quizzes = [], isLoading } = useQuery({
     queryKey: ['quizzes-list', courseId],
@@ -794,7 +818,7 @@ function QuizzesTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof 
   const { data: preview } = useQuery({
     queryKey: ['quiz-preview', previewId],
     queryFn: async () => {
-      const { data } = await api.get(`/quizzes/${previewId}/preview-random`);
+      const { data } = await api.get(`/quizzes/${previewId}/preview`);
       return data.data;
     },
     enabled: !!previewId,
@@ -816,9 +840,14 @@ function QuizzesTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof 
         <p className="text-sm text-gray-500">
           Each module gets one quiz. Quizzes stay locked until the trainer completes the linked module.
         </p>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors">
-          <Plus className="w-4 h-4" /> Create Quiz
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowCsvImport(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors">
+            <FileSpreadsheet className="w-4 h-4" /> Import CSV
+          </button>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors">
+            <Plus className="w-4 h-4" /> Create Quiz
+          </button>
+        </div>
       </div>
 
       {isLoading ? <Skeleton className="h-40" /> : (
@@ -877,36 +906,308 @@ function QuizzesTab({ courseId, qc }: { courseId: string; qc: ReturnType<typeof 
       )}
 
       {showAdd && <CreateQuizModal courseId={courseId} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); qc.invalidateQueries({ queryKey: ['quizzes-list'] }); qc.invalidateQueries({ queryKey: ['quiz-dashboard'] }); }} />}
+      {showCsvImport && <CsvImportModal courseId={courseId} onClose={() => setShowCsvImport(false)} onDone={() => { setShowCsvImport(false); qc.invalidateQueries({ queryKey: ['quizzes-list'] }); qc.invalidateQueries({ queryKey: ['quiz-dashboard'] }); qc.invalidateQueries({ queryKey: ['questions'] }); }} />}
 
       {previewId && preview && (
-        <Modal title="Randomized Question Preview (3 simulated students)" onClose={() => setPreviewId(null)} wide>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 text-sm text-gray-500 bg-purple-50 p-3 rounded-xl border border-purple-100">
-              <Shuffle className="w-5 h-5 text-purple-500" />
-              <div>
-                <p>Pool: <strong>{preview.poolSize}</strong> questions · Draws <strong>{preview.questionsPerAttempt}</strong> per student</p>
-                <p className="text-xs text-purple-600 mt-0.5">Each student gets a different random subset of questions</p>
-              </div>
-            </div>
-            <div className="grid md:grid-cols-3 gap-3">
-              {preview.draws.map((d: { studentLabel: string; questions: { text: string }[] }) => (
-                <div key={d.studentLabel} className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-                  <p className="font-semibold text-purple-800 text-sm mb-2 flex items-center gap-2">
-                    <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center text-xs font-bold text-purple-700">
-                      {d.studentLabel.split(' ')[1]}
-                    </div>
-                    {d.studentLabel}
-                  </p>
-                  <ol className="text-xs space-y-1.5 list-decimal list-inside text-gray-700">
-                    {d.questions.map((q, i) => <li key={i} className="truncate leading-relaxed">{q.text}</li>)}
-                  </ol>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Modal>
+        <QuizPreviewModal preview={preview} onClose={() => setPreviewId(null)} />
       )}
     </div>
+  );
+}
+
+
+/* Quiz Preview Modal */
+type PreviewQuestion = { id: string; text: string; type: string; options: string[]; correctAnswer: string; explanation: string | null; points: number; difficulty: string };
+type PreviewDraw    = { studentLabel: string; questions: PreviewQuestion[] };
+type PreviewData    = { quizTitle: string; poolSize: number; questionsPerAttempt: number; passingScore: number; timeLimitMinutes: number | null; draws: PreviewDraw[] };
+
+function QuizPreviewModal({ preview, onClose }: { preview: PreviewData; onClose: () => void }) {
+  const [activeStudent, setActiveStudent] = React.useState(0);
+  const [expandedQ, setExpandedQ]         = React.useState<Set<number>>(new Set());
+
+  const diffColor = (d: string) =>
+    d === 'EASY' ? 'bg-emerald-100 text-emerald-700' :
+    d === 'HARD' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
+
+  const toggle = (i: number) =>
+    setExpandedQ(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; });
+
+  const draw = preview.draws[activeStudent];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-purple-50 to-indigo-50">
+          <div>
+            <h2 className="font-bold text-gray-900 text-lg">{preview.quizTitle}</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Trainer Preview — how each student experiences this quiz</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/80 rounded-lg transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+
+        {/* Stats bar */}
+        <div className="grid grid-cols-4 divide-x border-b bg-gray-50 text-center">
+          {[
+            { label: 'Question Pool', value: preview.poolSize },
+            { label: 'Per Attempt',   value: preview.questionsPerAttempt },
+            { label: 'Passing Score', value: `${preview.passingScore}%` },
+            { label: 'Time Limit',    value: preview.timeLimitMinutes ? `${preview.timeLimitMinutes} min` : 'No limit' },
+          ].map(s => (
+            <div key={s.label} className="py-3 px-2">
+              <p className="text-base font-bold text-gray-900">{s.value}</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wide">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Student tabs */}
+        <div className="flex gap-1 px-4 pt-3 border-b">
+          {preview.draws.map((d, i) => (
+            <button key={i} onClick={() => { setActiveStudent(i); setExpandedQ(new Set()); }}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeStudent === i ? 'bg-purple-600 text-white' : 'text-gray-500 hover:bg-gray-100'
+              }`}>
+              {d.studentLabel}
+            </button>
+          ))}
+          <div className="ml-auto flex items-center gap-1 pb-1">
+            <div className="flex items-center gap-1.5 text-xs text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">
+              <Shuffle className="w-3 h-3" />
+              Each student gets a different random set
+            </div>
+          </div>
+        </div>
+
+        {/* Questions list */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-2">
+          {draw.questions.map((q, i) => (
+            <div key={q.id} className="border border-gray-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              {/* Question header */}
+              <button className="w-full flex items-start gap-3 p-4 text-left bg-white hover:bg-gray-50 transition-colors" onClick={() => toggle(i)}>
+                <span className="min-w-[26px] h-[26px] rounded-full bg-purple-100 text-purple-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 leading-snug">{q.text}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${diffColor(q.difficulty)}`}>{q.difficulty}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700">{q.type}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-600">{q.points} pt{q.points !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 mt-1 transition-transform ${expandedQ.has(i) ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Expanded: options + answer + explanation */}
+              {expandedQ.has(i) && (
+                <div className="border-t bg-gray-50/60 px-4 py-3 space-y-2">
+                  {q.options.length > 0 && (
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {q.options.map((opt, oi) => {
+                        const letter = String.fromCharCode(65 + oi);
+                        const isCorrect = opt === q.correctAnswer;
+                        return (
+                          <div key={oi} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm border ${
+                            isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium' : 'bg-white border-gray-100 text-gray-700'
+                          }`}>
+                            <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
+                              isCorrect ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-600'
+                            }`}>{letter}</span>
+                            {opt}
+                            {isCorrect && <span className="ml-auto text-[10px] text-emerald-600 font-semibold">CORRECT</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {q.options.length === 0 && (
+                    <p className="text-xs text-gray-500 italic">Answer: <span className="font-medium text-gray-800 not-italic">{q.correctAnswer}</span></p>
+                  )}
+                  {q.explanation && (
+                    <div className="flex gap-2 mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-blue-800">
+                      <BookOpen className="w-3.5 h-3.5 shrink-0 mt-0.5 text-blue-500" />
+                      <span>{q.explanation}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* CSV Import Modal ──────────────────────────── */
+
+function CsvImportModal({ courseId, onClose, onDone }: { courseId: string; onClose: () => void; onDone: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile]         = useState<File | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [form, setForm] = useState({
+    courseId, moduleId: '',
+    title: '', questionsPerAttempt: 10, passingScore: 60,
+    timeLimitMinutes: '' as string | number,
+    maxAttempts: 1, status: 'DRAFT' as 'DRAFT' | 'ACTIVE',
+  });
+
+  const { data: courses = [] } = useQuery({ queryKey: ['c-z'], queryFn: fetchCourses });
+  const cid = form.courseId || courseId || courses[0]?.id;
+  const { data: modules = [] } = useQuery({
+    queryKey: ['mod-z', cid],
+    queryFn: async () => {
+      const { data } = await api.get(`/courses/${cid}/modules`);
+      return data.data as CourseModule[];
+    },
+    enabled: !!cid,
+  });
+
+  function handleFile(f: File) {
+    if (!f.name.endsWith('.csv')) { toast.error('Please upload a .csv file'); return; }
+    setFile(f);
+    if (!form.title) setForm(prev => ({ ...prev, title: f.name.replace('.csv', '') + ' Quiz' }));
+  }
+
+  async function submit() {
+    if (!file) { toast.error('Please select a CSV file'); return; }
+    if (!form.moduleId) { toast.error('Please select a module'); return; }
+    if (!form.title) { toast.error('Please enter a quiz title'); return; }
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('courseId', cid);
+      fd.append('moduleId', form.moduleId);
+      fd.append('title', form.title);
+      fd.append('questionsPerAttempt', String(form.questionsPerAttempt));
+      fd.append('passingScore', String(form.passingScore));
+      fd.append('maxAttempts', String(form.maxAttempts));
+      fd.append('status', form.status);
+      if (form.timeLimitMinutes) fd.append('timeLimitMinutes', String(form.timeLimitMinutes));
+      const { data } = await api.post('/quizzes/csv-import', fd);
+      toast.success(`Imported ${data.data.questionsImported} questions into "${data.data.quiz.title}"!`);
+      onDone();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? 'CSV import failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal title="Import Quiz from CSV" onClose={onClose} wide>
+      <div className="space-y-4">
+        {/* CSV format hint */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <p className="text-xs font-semibold text-emerald-800 mb-1 flex items-center gap-1.5">
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Expected CSV format
+          </p>
+          <code className="text-xs text-emerald-700 font-mono block leading-relaxed">
+            question, optionA, optionB, optionC, optionD, correct_answer, points<br />
+            What is React?, A library, A framework, A database, A language, A, 2<br />
+            What is JSX?, HTML in JS, CSS syntax, DB query, Config file, A, 1
+          </code>
+          <p className="text-xs text-emerald-600 mt-1.5">correct_answer must be A, B, C, or D · points column is optional (default: 1)</p>
+        </div>
+
+        {/* File drop zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+          onClick={() => fileRef.current?.click()}
+          className={`cursor-pointer rounded-xl border-2 border-dashed p-5 text-center transition-all ${
+            file ? 'border-emerald-400 bg-emerald-50' : dragOver ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+          }`}
+        >
+          <input ref={fileRef} type="file" accept=".csv" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+          {file ? (
+            <div className="flex items-center justify-center gap-3">
+              <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <FileText className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-emerald-700">{file.name}</p>
+                <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB · click to replace</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1.5">
+              <Upload className="w-7 h-7 text-gray-300" />
+              <p className="text-sm font-medium text-gray-600">Drop CSV file here or click to browse</p>
+              <p className="text-xs text-gray-400">.csv only · max 5 MB</p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Module picker */}
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Module *</label>
+            <select className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white"
+              value={form.moduleId} onChange={(e) => setForm({ ...form, moduleId: e.target.value })}>
+              <option value="">Select module</option>
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title} · {m.status}{m.quizId ? ' (has quiz — will be replaced)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quiz title */}
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Quiz title *</label>
+            <input className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl"
+              placeholder="e.g. Module 1 — SQL Fundamentals Quiz"
+              value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Questions per attempt</label>
+            <input type="number" min={1} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl"
+              value={form.questionsPerAttempt} onChange={(e) => setForm({ ...form, questionsPerAttempt: +e.target.value || 1 })} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Passing score %</label>
+            <input type="number" min={0} max={100} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl"
+              value={form.passingScore} onChange={(e) => setForm({ ...form, passingScore: +e.target.value })} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Max attempts</label>
+            <input type="number" min={1} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl"
+              value={form.maxAttempts} onChange={(e) => setForm({ ...form, maxAttempts: +e.target.value || 1 })} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Time limit (min, optional)</label>
+            <input type="number" min={1} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl"
+              placeholder="No limit" value={form.timeLimitMinutes}
+              onChange={(e) => setForm({ ...form, timeLimitMinutes: e.target.value })} />
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">Status after import</label>
+            <select className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl bg-white"
+              value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as 'DRAFT' | 'ACTIVE' })}>
+              <option value="DRAFT">Draft (activate manually)</option>
+              <option value="ACTIVE">Active (releases with module)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-xs text-purple-700 flex items-start gap-2">
+          <Shuffle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>All imported quizzes use <strong>randomized questions + shuffled options</strong> per student. Each learner gets a unique draw from the question pool.</span>
+        </div>
+
+        <button onClick={submit} disabled={loading || !file || !form.moduleId || !form.title}
+          className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+          {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</> : <><FileSpreadsheet className="w-4 h-4" /> Import Questions & Create Quiz</>}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -1022,7 +1323,7 @@ function CreateQuizModal({ courseId, onClose, onDone }: { courseId: string; onCl
   );
 }
 
-/* ─────────────────────────── Attempts ──────────────────────────── */
+/* Attempts ──────────────────────────── */
 
 function AttemptsTab() {
   const { data: attempts = [], isLoading } = useQuery({
@@ -1085,8 +1386,6 @@ function AttemptsTab() {
     </div>
   );
 }
-
-/* ─────────────────────────── Modal ──────────────────────────── */
 
 function Modal({ title, children, onClose, wide }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
   return (

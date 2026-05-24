@@ -2,6 +2,9 @@ import { Routes, Route, Navigate } from 'react-router';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import LoginPage from './pages/Login';
+import SignupPage from './pages/Signup';
+import ForgotPasswordPage from './pages/ForgotPassword';
+import ResetPasswordPage from './pages/ResetPassword';
 import DashboardPage from './pages/Dashboard';
 import CourseMasterPage from './pages/CourseMaster';
 import BatchMasterPage from './pages/BatchMaster';
@@ -14,7 +17,10 @@ import LearnerMasterPage from './pages/LearnerMaster';
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login"            element={<LoginPage />} />
+      <Route path="/signup"           element={<SignupPage />} />
+      <Route path="/forgot-password"  element={<ForgotPasswordPage />} />
+      <Route path="/reset-password"   element={<ResetPasswordPage />} />
       <Route
         path="/"
         element={
@@ -47,13 +53,11 @@ export default function App() {
 function ComingSoon({ title, icon }: { title: string; icon: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[60vh] gap-4">
-      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center text-4xl">
+      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center text-3xl shadow-xl">
         {icon}
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
-      <p className="text-gray-500 text-sm text-center max-w-xs">
-        This module is coming soon. Stay tuned for updates!
-      </p>
+      <h2 className="text-xl font-semibold text-white">{title}</h2>
+      <p className="text-gray-400 text-sm">This module is coming soon.</p>
     </div>
   );
 }

@@ -15,8 +15,8 @@ export declare const createAssignmentSchema: z.ZodObject<{
     status: z.ZodDefault<z.ZodEnum<["DRAFT", "PUBLISHED", "CLOSED"]>>;
     batchIds: z.ZodEffects<z.ZodDefault<z.ZodArray<z.ZodString, "many">>, string[], unknown>;
 }, "strip", z.ZodTypeAny, {
-    title: string;
     status: "DRAFT" | "PUBLISHED" | "CLOSED";
+    title: string;
     courseId: string;
     maxScore: number;
     batchIds: string[];
@@ -26,8 +26,8 @@ export declare const createAssignmentSchema: z.ZodObject<{
 }, {
     title: string;
     courseId: string;
-    description?: string | undefined;
     status?: "DRAFT" | "PUBLISHED" | "CLOSED" | undefined;
+    description?: string | undefined;
     moduleId?: string | undefined;
     dueDate?: string | undefined;
     maxScore?: number | undefined;
@@ -43,17 +43,17 @@ export declare const updateAssignmentSchema: z.ZodObject<Omit<{
     status: z.ZodOptional<z.ZodDefault<z.ZodEnum<["DRAFT", "PUBLISHED", "CLOSED"]>>>;
     batchIds: z.ZodOptional<z.ZodEffects<z.ZodDefault<z.ZodArray<z.ZodString, "many">>, string[], unknown>>;
 }, "courseId">, "strip", z.ZodTypeAny, {
-    description?: string | undefined;
-    title?: string | undefined;
     status?: "DRAFT" | "PUBLISHED" | "CLOSED" | undefined;
+    title?: string | undefined;
+    description?: string | undefined;
     moduleId?: string | undefined;
     dueDate?: string | undefined;
     maxScore?: number | undefined;
     batchIds?: string[] | undefined;
 }, {
-    description?: string | undefined;
-    title?: string | undefined;
     status?: "DRAFT" | "PUBLISHED" | "CLOSED" | undefined;
+    title?: string | undefined;
+    description?: string | undefined;
     moduleId?: string | undefined;
     dueDate?: string | undefined;
     maxScore?: number | undefined;

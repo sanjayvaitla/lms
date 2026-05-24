@@ -17,12 +17,12 @@ export declare const updateModuleSchema: z.ZodObject<{
     description: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     sortOrder: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    description?: string | undefined;
     title?: string | undefined;
+    description?: string | undefined;
     sortOrder?: number | undefined;
 }, {
-    description?: string | undefined;
     title?: string | undefined;
+    description?: string | undefined;
     sortOrder?: number | undefined;
 }>;
 export type CreateModuleInput = z.infer<typeof createModuleSchema>;

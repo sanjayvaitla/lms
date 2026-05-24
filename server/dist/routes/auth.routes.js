@@ -35,12 +35,24 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authController = __importStar(require("../controllers/auth.controller"));
+const googleController = __importStar(require("../controllers/auth.google.controller"));
+const otpController = __importStar(require("../controllers/auth.otp.controller"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const router = (0, express_1.Router)();
+// Standard email/password
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/refresh', authController.refresh);
 router.post('/logout', auth_middleware_1.authenticate, authController.logout);
 router.get('/me', auth_middleware_1.authenticate, authController.me);
+// Google OAuth 2.0
+router.get('/google', googleController.googleAuth);
+router.get('/google/callback', googleController.googleCallback);
+// Forgot / Reset password
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
+// MSG91 OTP / MFA
+router.post('/send-otp', otpController.sendOtp);
+router.post('/verify-otp', otpController.verifyOtp);
 exports.default = router;
 //# sourceMappingURL=auth.routes.js.map

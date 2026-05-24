@@ -1,5 +1,6 @@
 import { Router, IRouter } from 'express';
 import * as ctrl from '../controllers/batches.controller';
+import * as syllabusCtrl from '../controllers/syllabus.controller';
 import { authenticate, requireRole } from '../middleware/auth.middleware';
 
 const router: IRouter = Router();
@@ -27,6 +28,13 @@ router.patch(
   authenticate,
   requireRole('SUPER_ADMIN', 'ADMIN', 'TRAINER'),
   ctrl.archive,
+);
+// Restore archived batch — admin only
+router.patch(
+  '/:id/restore',
+  authenticate,
+  requireRole('SUPER_ADMIN', 'ADMIN'),
+  ctrl.restore,
 );
 // Hard delete — admin only
 router.delete(
@@ -67,6 +75,19 @@ router.get(
   '/:id/analytics',
   authenticate,
   ctrl.analytics,
+);
+
+// Batch syllabus
+router.get(
+  '/:batchId/syllabus',
+  authenticate,
+  syllabusCtrl.getBatchSyllabus,
+);
+router.post(
+  '/:batchId/syllabus',
+  authenticate,
+  requireRole('SUPER_ADMIN', 'ADMIN', 'TRAINER'),
+  syllabusCtrl.assignSyllabusToBatch,
 );
 
 export default router;

@@ -1,6 +1,6 @@
-# LMS Admin Portal Screens
+# LMS Admin Portal
 
-This is a code bundle for LMS Admin Portal Screens. The original project is available at https://www.figma.com/design/o8SUWXVuFZ3lxTueTKIhaq/LMS-Admin-Portal-Screens.
+This is the LMS (Learning Management System) Admin Portal project. A full-stack application for managing courses, learners, assignments, quizzes, and more.
 
 ## Running the code
 

@@ -26,6 +26,8 @@ export { AssignmentBatch }      from './AssignmentBatch';
 export { AssignmentSubmission } from './AssignmentSubmission';
 export { Message }              from './Message';
 export { PasswordResetToken }   from './PasswordResetToken';
+export { AttendanceSession }    from './AttendanceSession';
+export { AttendanceRecord }     from './AttendanceRecord';
 
 import { User }                 from './User';
 import { Course }               from './Course';
@@ -46,6 +48,8 @@ import { AssignmentBatch }      from './AssignmentBatch';
 import { AssignmentSubmission } from './AssignmentSubmission';
 import { Message }              from './Message';
 import { PasswordResetToken }   from './PasswordResetToken';
+import { AttendanceSession }    from './AttendanceSession';
+import { AttendanceRecord }     from './AttendanceRecord';
 
 sequelize.addModels([
   User,
@@ -67,4 +71,6 @@ sequelize.addModels([
   AssignmentSubmission,
   Message,
   PasswordResetToken,
+  AttendanceSession,
+  AttendanceRecord,
 ]);

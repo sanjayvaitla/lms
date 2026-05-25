@@ -8,6 +8,7 @@ import learnersRoutes    from './learners.routes';
 import modulesRoutes     from './modules.routes';
 import quizzesRoutes     from './quizzes.routes';
 import assignmentsRoutes from './assignments.routes';
+import attendanceRoutes  from './attendance.routes';
 
 const router: import('express').Router = Router();
 
@@ -20,5 +21,6 @@ router.use('/trainers',    trainersRoutes);
 router.use('/learners',    learnersRoutes);
 router.use('/quizzes',     quizzesRoutes);
 router.use('/assignments', assignmentsRoutes);
+router.use('/attendance',  attendanceRoutes);
 
 export default router;

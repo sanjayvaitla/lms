@@ -413,6 +413,60 @@ EXCEPTION WHEN others THEN NULL; END $$;
 DO $$ BEGIN
   CREATE INDEX IF NOT EXISTS idx_pwd_reset_user ON password_reset_tokens(user_id);
 EXCEPTION WHEN others THEN NULL; END $$;
+
+-- ── Attendance Sessions ─────────────────────────────────────────────────────
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS attendance_sessions (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    batch_id       UUID        NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    trainer_id     UUID        REFERENCES users(id) ON DELETE SET NULL,
+    title          TEXT        NOT NULL,
+    session_date   DATE        NOT NULL,
+    start_time     TIME,
+    end_time       TIME,
+    duration_min   INTEGER,
+    topic          TEXT,
+    notes          TEXT,
+    status         TEXT        NOT NULL DEFAULT 'SCHEDULED',
+    created_by     UUID        REFERENCES users(id) ON DELETE SET NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_att_sessions_batch   ON attendance_sessions(batch_id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_att_sessions_trainer ON attendance_sessions(trainer_id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_att_sessions_date    ON attendance_sessions(session_date);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ── Attendance Records ───────────────────────────────────────────────────────
+DO $$ BEGIN
+  CREATE TABLE IF NOT EXISTS attendance_records (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id  UUID        NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
+    student_id  UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status      TEXT        NOT NULL DEFAULT 'ABSENT',
+    marked_by   UUID        REFERENCES users(id) ON DELETE SET NULL,
+    marked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    remarks     TEXT,
+    UNIQUE (session_id, student_id)
+  );
+EXCEPTION WHEN others THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_att_records_session ON attendance_records(session_id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_att_records_student ON attendance_records(student_id);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 `;
 
 async function runSchema() {

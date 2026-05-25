@@ -13,6 +13,7 @@ import TrainerMasterPage from './pages/TrainerMaster';
 import AssignmentMasterPage from './pages/AssignmentMaster';
 import QuizMasterPage from './pages/QuizMaster';
 import LearnerMasterPage from './pages/LearnerMaster';
+import AttendanceMasterPage from './pages/AttendanceMaster';
 
 export default function App() {
   return (
@@ -40,7 +41,7 @@ export default function App() {
         <Route path="learners"    element={<LearnerMasterPage />} />
         <Route path="projects"    element={<ComingSoon title="Project Master" icon="🗂️" />} />
         <Route path="placements"  element={<ComingSoon title="Placement Master" icon="💼" />} />
-        <Route path="attendance"  element={<ComingSoon title="Attendance Master" icon="📅" />} />
+        <Route path="attendance"  element={<AttendanceMasterPage />} />
         <Route path="fees"        element={<ComingSoon title="Fees Module" icon="💰" />} />
         <Route path="messaging"   element={<ComingSoon title="Messaging" icon="💬" />} />
         <Route path="ai-tutor"    element={<ComingSoon title="AI Chat Tutor" icon="🤖" />} />

@@ -19,7 +19,7 @@ const q = (v: unknown): string | undefined =>
   v === undefined || v === null ? undefined : (Array.isArray(v) ? String(v[0]) : String(v));
 
 const userId = (req: Request): string => {
-  const id = (req as any).user?.id;
+  const id = (req as any).user?.userId;
   if (!id) throw new AppError('Unauthorized', 401, 'UNAUTHORIZED');
   return id as string;
 };

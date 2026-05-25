@@ -1,5 +1,6 @@
 import db from '../lib/db';
 import { AppError } from '../middleware/error.middleware';
+import { storageAdapter } from '../lib/storage';
 
 interface UploadedFile {
   mimetype: string;
@@ -34,6 +35,8 @@ export interface SyllabusResult {
   label:          string | null;
   contentText:    string;
   structuredData: StructuredSyllabus | null;
+  filePath:       string | null;   // S3 key (or null for old records)
+  fileUrl:        string | null;   // presigned/public URL
   createdAt:      string;
   uploadedByName?: string;
 }
@@ -260,25 +263,34 @@ export async function uploadSyllabus(
     );
   }
 
+  // ── Upload original file to S3 (or local disk) ───────────────────────────
+  const stored = await storageAdapter.upload(
+    { buffer: file.buffer, originalname: file.originalname, mimetype: file.mimetype },
+    'syllabi',
+  );
+
   const uploaderExists = uploadedBy
     ? (await db.query('SELECT id FROM users WHERE id = $1', [uploadedBy])).rowCount ?? 0 > 0
     : false;
   const safeUploadedBy = uploaderExists ? uploadedBy : null;
 
   const { rows } = await db.query(
-    `INSERT INTO course_syllabi (course_id, filename, file_type, content_text, structured_data, uploaded_by, label)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO course_syllabi (course_id, filename, file_type, content_text, structured_data, uploaded_by, label, file_path)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, filename, file_type AS "fileType",
                content_text AS "contentText",
                structured_data AS "structuredData",
                label,
+               file_path AS "filePath",
                created_at AS "createdAt"`,
     [courseId, file.originalname, fileType, contentText,
      structuredData ? JSON.stringify(structuredData) : null, safeUploadedBy,
-     label ?? null],
+     label ?? null, stored.key],
   );
 
-  return rows[0] as SyllabusResult;
+  const row = rows[0] as SyllabusResult;
+  row.fileUrl = stored.url;
+  return row;
 }
 
 // ── List all syllabi for a course ────────────────────────────────────────────
@@ -288,6 +300,7 @@ export async function listSyllabi(courseId: string) {
             s.label,
             s.structured_data AS "structuredData",
             s.content_text AS "contentText",
+            s.file_path AS "filePath",
             s.created_at AS "createdAt",
             u.name AS "uploadedByName"
      FROM course_syllabi s
@@ -296,7 +309,14 @@ export async function listSyllabi(courseId: string) {
      ORDER BY s.created_at DESC`,
     [courseId],
   );
-  return rows as SyllabusResult[];
+  // Attach presigned/public URLs
+  const results = await Promise.all(
+    (rows as SyllabusResult[]).map(async (r) => ({
+      ...r,
+      fileUrl: r.filePath ? await storageAdapter.getUrl(r.filePath) : null,
+    })),
+  );
+  return results;
 }
 
 // ── Get single syllabus (latest for course, or specific id) ──────────────────
@@ -306,6 +326,7 @@ export async function getSyllabus(courseId: string, syllabusId?: string): Promis
       `SELECT s.id, s.filename, s.file_type AS "fileType",
               s.label, s.content_text AS "contentText",
               s.structured_data AS "structuredData",
+              s.file_path AS "filePath",
               s.created_at AS "createdAt",
               u.name AS "uploadedByName"
        FROM course_syllabi s
@@ -313,12 +334,16 @@ export async function getSyllabus(courseId: string, syllabusId?: string): Promis
        WHERE s.id = $1 AND s.course_id = $2`,
       [syllabusId, courseId],
     );
-    return (rows[0] as SyllabusResult) ?? null;
+    if (!rows[0]) return null;
+    const r = rows[0] as SyllabusResult;
+    r.fileUrl = r.filePath ? await storageAdapter.getUrl(r.filePath) : null;
+    return r;
   }
   const { rows } = await db.query(
     `SELECT s.id, s.filename, s.file_type AS "fileType",
             s.label, s.content_text AS "contentText",
             s.structured_data AS "structuredData",
+            s.file_path AS "filePath",
             s.created_at AS "createdAt",
             u.name AS "uploadedByName"
      FROM course_syllabi s
@@ -328,17 +353,25 @@ export async function getSyllabus(courseId: string, syllabusId?: string): Promis
      LIMIT 1`,
     [courseId],
   );
-  return (rows[0] as SyllabusResult) ?? null;
+  if (!rows[0]) return null;
+  const r = rows[0] as SyllabusResult;
+  r.fileUrl = r.filePath ? await storageAdapter.getUrl(r.filePath) : null;
+  return r;
 }
 
 // ── Delete a syllabus version ────────────────────────────────────────────────
 export async function deleteSyllabus(courseId: string, syllabusId: string) {
   const res = await db.query(
-    'DELETE FROM course_syllabi WHERE id = $1 AND course_id = $2 RETURNING id',
+    'DELETE FROM course_syllabi WHERE id = $1 AND course_id = $2 RETURNING id, file_path AS "filePath"',
     [syllabusId, courseId],
   );
   if (!res.rowCount || res.rowCount === 0) {
     throw new AppError('Syllabus not found', 404, 'NOT_FOUND');
+  }
+  // Delete the original file from S3 / local disk
+  const filePath = (res.rows[0] as any).filePath as string | null;
+  if (filePath) {
+    try { await storageAdapter.delete(filePath); } catch (_) { /* ignore if already gone */ }
   }
 }
 
@@ -358,6 +391,7 @@ export async function getBatchSyllabus(batchId: string): Promise<SyllabusResult 
     `SELECT s.id, s.filename, s.file_type AS "fileType",
             s.label, s.content_text AS "contentText",
             s.structured_data AS "structuredData",
+            s.file_path AS "filePath",
             s.created_at AS "createdAt",
             u.name AS "uploadedByName"
      FROM batch_syllabi bs
@@ -366,5 +400,8 @@ export async function getBatchSyllabus(batchId: string): Promise<SyllabusResult 
      WHERE bs.batch_id = $1`,
     [batchId],
   );
-  return (rows[0] as SyllabusResult) ?? null;
+  if (!rows[0]) return null;
+  const r = rows[0] as SyllabusResult;
+  r.fileUrl = r.filePath ? await storageAdapter.getUrl(r.filePath) : null;
+  return r;
 }

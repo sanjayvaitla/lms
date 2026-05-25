@@ -183,8 +183,20 @@ function SessionModal({ open, onClose, editing, batches, trainers, onSaved }: {
 
   const saveMut = useMutation({
     mutationFn: (d: SessionForm) => {
-      // Convert empty string trainerId to null so the server accepts it
-      const payload = { ...d, trainerId: d.trainerId || null };
+      // Sanitize optional fields — empty strings must become null/undefined
+      // so the server validator (which uses strict regex/number checks) doesn't reject them
+      const payload = {
+        batchId:     d.batchId,
+        trainerId:   d.trainerId   || null,
+        title:       d.title,
+        sessionDate: d.sessionDate,
+        startTime:   d.startTime   || null,
+        endTime:     d.endTime     || null,
+        durationMin: d.durationMin === '' || d.durationMin === undefined ? null : Number(d.durationMin),
+        topic:       d.topic       || null,
+        notes:       d.notes       || null,
+        status:      d.status,
+      };
       return editing
         ? api.patch('/attendance/sessions/' + editing.id, payload)
         : api.post('/attendance/sessions', payload);
@@ -195,7 +207,10 @@ function SessionModal({ open, onClose, editing, batches, trainers, onSaved }: {
       qc.invalidateQueries({ queryKey: ['att-dashboard'] });
       reset(); onSaved(); onClose();
     },
-    onError: () => toast.error('Failed to save session'),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Failed to save session';
+      toast.error(msg);
+    },
   });
 
   if (!open) return null;

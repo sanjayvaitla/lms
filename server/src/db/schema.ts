@@ -358,7 +358,7 @@ EXCEPTION WHEN others THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER TABLE users ADD CONSTRAINT users_google_id_unique UNIQUE (google_id);
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN others THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number TEXT;
@@ -366,7 +366,7 @@ EXCEPTION WHEN others THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER TABLE users ADD CONSTRAINT users_phone_number_unique UNIQUE (phone_number);
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN others THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER TABLE users ADD COLUMN IF NOT EXISTS is_phone_verified BOOLEAN NOT NULL DEFAULT FALSE;

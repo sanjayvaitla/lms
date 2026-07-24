@@ -1,0 +1,42 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            cd /home/ubuntu/LMS/LMS-Frontend
+
+            echo "Fetching latest code..."
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "Installing dependencies..."
+            npm ci
+
+            echo "Building application..."
+            export NODE_OPTIONS="--max-old-space-size=2048"
+            npm run build
+
+            echo "Deploying build to Nginx..."
+            sudo rm -rf /var/www/lms/*
+            sudo cp -r dist/* /var/www/lms/
+
+            echo "Reloading Nginx..."
+            sudo systemctl reload nginx
+
+            echo "Frontend deployed successfully."

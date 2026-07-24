@@ -1,0 +1,369 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* ── Motion tokens — iPhone / Netflix pacing (deliberate, never snappy) ── */
+:root {
+  /* iOS system-like decelerate — long settle, no bounce */
+  --lms-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --lms-ease-in-out: cubic-bezier(0.45, 0.05, 0.55, 0.95);
+  --lms-ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --lms-duration-fast: 240ms;
+  --lms-duration-normal: 340ms;
+  --lms-duration-slow: 480ms;
+  --lms-duration-enter: 420ms;
+}
+
+/* Smooth scrolling without jank */
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* Make all tables responsive on mobile devices efficiently */
+@media (max-width: 1024px) {
+  table {
+    display: block !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    width: 100% !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* Table row hover — modern feel */
+.lms-table-row {
+  transition: background-color var(--lms-duration-fast) var(--lms-ease-soft);
+}
+.lms-table-row:hover {
+  background-color: rgba(248, 250, 252, 0.9);
+}
+
+@keyframes float-badge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float {
+  animation: float-badge 6s ease-in-out infinite;
+}
+
+/* Page enter — cinematic fade + soft rise (Netflix / iOS) */
+.lms-page {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out);
+}
+@keyframes lms-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Login card — same calm entrance */
+.lms-login-enter {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out);
+}
+
+/* Scroll reveal — once */
+.lms-reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity var(--lms-duration-slow) var(--lms-ease-out),
+              transform var(--lms-duration-slow) var(--lms-ease-out);
+  will-change: opacity, transform;
+}
+.lms-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Accordion expand — butter smooth */
+.lms-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--lms-duration-slow) var(--lms-ease-out);
+}
+.lms-expand.is-open {
+  grid-template-rows: 1fr;
+}
+.lms-expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.lms-fade-in {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out);
+}
+
+/* Soft stagger — spaced so the eye can follow (not machine-gun) */
+.lms-stagger > * {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out) both;
+}
+.lms-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.lms-stagger > *:nth-child(2) { animation-delay: 55ms; }
+.lms-stagger > *:nth-child(3) { animation-delay: 110ms; }
+.lms-stagger > *:nth-child(4) { animation-delay: 165ms; }
+.lms-stagger > *:nth-child(5) { animation-delay: 220ms; }
+.lms-stagger > *:nth-child(6) { animation-delay: 275ms; }
+
+/* Soft press — no snappy scale; gentle opacity settle only */
+.lms-press {
+  transition: transform var(--lms-duration-normal) var(--lms-ease-out),
+              background-color var(--lms-duration-normal) var(--lms-ease-soft),
+              border-color var(--lms-duration-normal) var(--lms-ease-soft),
+              box-shadow var(--lms-duration-normal) var(--lms-ease-soft),
+              opacity var(--lms-duration-normal) var(--lms-ease-soft);
+  touch-action: manipulation;
+}
+.lms-press:hover:not(:disabled) {
+  transform: none;
+}
+.lms-press:active:not(:disabled) {
+  transform: scale(0.992);
+  transition-duration: 180ms;
+}
+.lms-press:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+
+/* Session / list cards */
+.lms-card {
+  transition: box-shadow var(--lms-duration-normal) var(--lms-ease-soft),
+              border-color var(--lms-duration-normal) var(--lms-ease-soft),
+              transform var(--lms-duration-normal) var(--lms-ease-out);
+  will-change: transform;
+}
+.lms-card:hover {
+  box-shadow: 0 12px 32px -16px rgba(15, 23, 42, 0.14);
+}
+
+/* Premium interactive card lift — slow, 1px only */
+.lms-card-lift {
+  transition: transform var(--lms-duration-normal) var(--lms-ease-out),
+              box-shadow var(--lms-duration-normal) var(--lms-ease-soft),
+              border-color var(--lms-duration-normal) var(--lms-ease-soft);
+  will-change: transform;
+}
+.lms-card-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px -14px rgba(15, 23, 42, 0.12);
+}
+.lms-card-lift:active {
+  transform: translateY(0);
+  transition-duration: 200ms;
+}
+
+/* Drawer slide polish */
+.lms-drawer {
+  transition: transform var(--lms-duration-slow) var(--lms-ease-out), box-shadow var(--lms-duration-normal) var(--lms-ease-soft);
+  will-change: transform;
+}
+
+/* Back to top */
+.lms-back-to-top {
+  animation: lms-enter var(--lms-duration-normal) var(--lms-ease-out);
+}
+
+/* Skeleton shimmer */
+@keyframes lms-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.lms-skeleton {
+  background: linear-gradient(
+    90deg,
+    #e2e8f0 0%,
+    #f1f5f9 40%,
+    #e2e8f0 80%
+  );
+  background-size: 200% 100%;
+  animation: lms-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Empty state entrance */
+.lms-empty {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out);
+}
+.lms-empty-icon {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out) 80ms both;
+}
+
+/* Nav link — subtle hover */
+.lms-nav-link {
+  position: relative;
+  transition: background-color var(--lms-duration-normal) var(--lms-ease-soft),
+              color var(--lms-duration-normal) var(--lms-ease-soft),
+              box-shadow var(--lms-duration-normal) var(--lms-ease-soft),
+              transform var(--lms-duration-normal) var(--lms-ease-out);
+}
+.lms-nav-link:hover:not(.is-active) {
+  transform: translateX(1px);
+}
+
+/* Chart fade */
+.lms-chart-in {
+  animation: lms-chart-in var(--lms-duration-slow) var(--lms-ease-out) 160ms both;
+}
+@keyframes lms-chart-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Comfortable touch targets on actions */
+.lms-tap {
+  min-height: 2rem;
+  min-width: 2rem;
+}
+
+/* Long lists paint faster — skip offscreen work */
+.lms-list-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+/* Coding studio — iPhone-smooth panel transitions (CSS only) */
+.coding-studio {
+  animation: lms-enter var(--lms-duration-enter) var(--lms-ease-out);
+}
+.coding-tab-pane {
+  animation: coding-pane-in var(--lms-duration-normal) var(--lms-ease-out);
+}
+.coding-fade {
+  animation: coding-pane-in var(--lms-duration-enter) var(--lms-ease-out);
+}
+@keyframes coding-pane-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.coding-panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .coding-studio,
+  .coding-tab-pane,
+  .coding-fade { animation: none; }
+}
+
+/* ── Premium toast (Sonner) ── */
+[data-sonner-toaster] {
+  --width: 320px;
+  font-family: inherit;
+}
+
+.lms-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: var(--width);
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 4px 16px -4px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(8px);
+  color: #334155;
+  pointer-events: auto;
+}
+
+.lms-toast-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #1e293b;
+}
+
+.lms-toast-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.lms-toast-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.lms-toast-success {
+  border-left: 2px solid rgba(16, 185, 129, 0.45);
+}
+.lms-toast-success .lms-toast-icon {
+  color: #10b981;
+}
+
+.lms-toast-error {
+  border-left: 2px solid rgba(244, 63, 94, 0.45);
+}
+.lms-toast-error .lms-toast-icon {
+  color: #f43f5e;
+}
+
+.lms-toast-info {
+  border-left: 2px solid rgba(59, 130, 246, 0.45);
+}
+.lms-toast-info .lms-toast-icon {
+  color: #3b82f6;
+}
+
+.lms-toast-warning {
+  border-left: 2px solid rgba(245, 158, 11, 0.45);
+}
+.lms-toast-warning .lms-toast-icon {
+  color: #f59e0b;
+}
+
+[data-sonner-toast][data-styled='true'] {
+  animation: lms-toast-in var(--lms-duration-normal) var(--lms-ease-out);
+}
+[data-sonner-toast][data-removed='true'] {
+  animation: lms-toast-out var(--lms-duration-fast) var(--lms-ease-out) forwards;
+}
+@keyframes lms-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes lms-toast-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lms-expand { transition: none; }
+  .lms-fade-in,
+  .lms-page,
+  .lms-login-enter,
+  .lms-stagger > *,
+  .lms-reveal,
+  .lms-empty,
+  .lms-empty-icon,
+  .lms-chart-in,
+  .lms-back-to-top,
+  .animate-float,
+  [data-sonner-toast] { animation: none !important; }
+  .lms-reveal { opacity: 1; transform: none; }
+  .lms-press,
+  .lms-card,
+  .lms-card-lift,
+  .lms-drawer,
+  .lms-nav-link { transition: none; }
+  .lms-press:hover:not(:disabled),
+  .lms-press:active:not(:disabled),
+  .lms-card-lift:hover,
+  .lms-card-lift:active,
+  .lms-nav-link:hover:not(.is-active) { transform: none; }
+  .lms-skeleton { animation: none; background: #e2e8f0; }
+}
+
+/* Hide native browser password reveal icons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear,
+input[type="password"]::-webkit-contacts-auto-fill-button,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}

@@ -1,0 +1,24 @@
+Grade Error: Error: 400 {"error":{"message":"The model `llama3-8b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.","type":"invalid_request_error","code":"model_decommissioned"}}
+    at Function.generate (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\core\error.ts:60:14)
+    at Groq.makeStatusError (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:286:28)
+    at Groq.makeRequest (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:506:24)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at handleAiInterviewGrade (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\src\controllers\ai_mock_interview.controller.ts:123:28)
+Grade Error: Error: 400 {"error":{"message":"The model `llama3-8b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.","type":"invalid_request_error","code":"model_decommissioned"}}
+    at Function.generate (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\core\error.ts:60:14)
+    at Groq.makeStatusError (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:286:28)
+    at Groq.makeRequest (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:506:24)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at handleAiInterviewGrade (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\src\controllers\ai_mock_interview.controller.ts:123:28)
+Grade Error: Error: 400 {"error":{"message":"The model `llama3-8b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.","type":"invalid_request_error","code":"model_decommissioned"}}
+    at Function.generate (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\core\error.ts:60:14)
+    at Groq.makeStatusError (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:286:28)
+    at Groq.makeRequest (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:506:24)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at handleAiInterviewGrade (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\src\controllers\ai_mock_interview.controller.ts:123:28)
+Grade Error: Error: 400 {"error":{"message":"The model `llama3-8b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.","type":"invalid_request_error","code":"model_decommissioned"}}
+    at Function.generate (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\core\error.ts:60:14)
+    at Groq.makeStatusError (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:286:28)
+    at Groq.makeRequest (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\node_modules\.pnpm\groq-sdk@1.2.1\node_modules\groq-sdk\src\client.ts:506:24)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at handleAiInterviewGrade (C:\Users\ADMIN\Desktop\LMS_New\LMS-Backend-New\src\controllers\ai_mock_interview.controller.ts:123:28)
